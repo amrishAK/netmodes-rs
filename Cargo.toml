@@ -1,0 +1,15 @@
+[package]
+name = "netmodes-rs"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "server"
+path = "src/server_module/main.rs"
+
+[dependencies]
+libc = "0.2.186"
+socket2 = "0.6.4"
+thiserror = "2.0.18"
+uuid = { version = "1", features = ["v4"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Networking_WinSock"] }

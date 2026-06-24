@@ -1,31 +1,19 @@
-use self::errors::SocketError;
+pub mod socket_error;
+mod helper;
+mod tcp_platform;
 
-pub mod errors;
-
-pub(crate) trait TcpSocketPlatform {
-    type Socket: Copy;
-
-    fn create_tcp_socket() -> Result<Self::Socket, SocketError>;
-    fn configure_listener_socket(fd: Self::Socket) -> Result<(), SocketError>;
-    fn bind_socket(fd: Self::Socket, host: &str, port: u16) -> Result<(), SocketError>;
-    fn listen_socket(fd: Self::Socket, backlog: i32) -> Result<(), SocketError>;
-    fn accept_connection(fd: Self::Socket) -> Result<Self::Socket, SocketError>;
-    fn close_socket(fd: Self::Socket) -> Result<(), SocketError>;
-    fn send_data(fd: Self::Socket, data: &[u8]) -> Result<usize, SocketError>;
-    fn receive_data(fd: Self::Socket, buffer: &mut [u8]) -> Result<usize, SocketError>;
-}
+pub use socket_error::SocketError;
+pub use tcp_platform::TcpSocketPlatform;
 
 #[cfg(unix)]
 mod unix;
-
 #[cfg(windows)]
 mod windows;
 
 #[cfg(unix)]
-type Platform = unix::UnixTcpSocket;
-
+pub(crate) type Platform = unix::tcp::UnixTcpSocket;
 #[cfg(windows)]
-type Platform = windows::WindowsTcpSocket;
+pub(crate) type Platform = windows::tcp::WindowsTcpSocket;
 
 pub(crate) type Socket = <Platform as TcpSocketPlatform>::Socket;
 

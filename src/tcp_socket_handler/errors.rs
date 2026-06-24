@@ -1,21 +1,24 @@
 use thiserror::Error;
-use super::raw_socket::errors::SocketError;
+use crate::core::socket::SocketError;
 
+// In TcpHandlerError
 #[derive(Error, Debug)]
 pub enum TcpHandlerError {
-    #[error("Tcp server creation failed due to invalid port: {0}")]
-    TcpPortValidationError(String),
+    #[error("TCP server creation failed: invalid port: {0}")]
+    InvalidPort(String),
 
-    #[error("Tcp server creation failed due to invalid host: {0}")]
-    TcpHostValidationError(String),
+    #[error("TCP server creation failed: invalid host: {0}")]
+    InvalidHost(String),
 
-    #[error("Tcp server creation failed due to invalid state: {0}")]
-    TcpStateError(String),
+    #[error("TCP server creation failed: invalid state: {0}")]
+    InvalidState(String),
 
-    // Single #[from] for SocketError
-    #[error("Tcp server socket error: {0}")]
-    TcpSocketError(#[from] SocketError),
+    #[error("TCP socket error: {0}")]
+    Socket(#[from] SocketError),
 
-    #[error("Tcp client write operation failed due to socket error: {0}")]
-    TcpClientWriteError(SocketError),
+    #[error("Partial write: sent {sent} of {total} bytes")]
+    PartialWrite { sent: usize, total: usize },
+
+    #[error("Connection closed by peer")]
+    ConnectionClosed,
 }

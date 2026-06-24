@@ -1,0 +1,93 @@
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use netmodes_rs::tcp_socket_handler::{TcpClient, TcpHandlerError, TcpServer, TcpSettings};
+
+fn echo_client_handler(client: TcpClient) {
+    let mut buffer = [0_u8; 1024];
+
+    loop {
+        match client.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                if client.write(&buffer[..n]).is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+fn pick_free_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to pick free port");
+    listener
+        .local_addr()
+        .expect("failed to read local address")
+        .port()
+}
+
+fn wait_for_server(port: u16, timeout: Duration) {
+    let start = Instant::now();
+
+    while start.elapsed() < timeout {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    panic!("server did not start on port {port} in time");
+}
+
+#[test]
+fn tcp_server_rejects_zero_port() {
+    let settings = TcpSettings {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+    };
+
+    let err = match TcpServer::new(settings) {
+        Ok(_) => panic!("expected invalid port error"),
+        Err(err) => err,
+    };
+    assert!(matches!(err, TcpHandlerError::InvalidPort(_)));
+}
+
+#[test]
+fn tcp_echo_server_round_trip() {
+    let port = pick_free_port();
+
+    thread::spawn(move || {
+        let settings = TcpSettings {
+            host: "127.0.0.1".to_string(),
+            port,
+        };
+
+        let mut server = TcpServer::new(settings).expect("failed to create tcp server");
+        server.initialize().expect("failed to initialize tcp server");
+
+        let _ = server.run(echo_client_handler);
+    });
+
+    wait_for_server(port, Duration::from_secs(3));
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("failed to connect to echo server");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("failed to set read timeout");
+
+    let payload = b"echo-check";
+    stream
+        .write_all(payload)
+        .expect("failed to write payload to server");
+
+    let mut echoed = vec![0_u8; payload.len()];
+    stream
+        .read_exact(&mut echoed)
+        .expect("failed to read echoed payload");
+
+    assert_eq!(echoed, payload);
+}

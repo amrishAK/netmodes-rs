@@ -1,6 +1,5 @@
 use uuid::Uuid;
-use super::raw_socket::*;
-use super::raw_socket::errors::SocketError;
+use crate::core::socket::*;
 use super::errors::TcpHandlerError;
 use std::thread::spawn;
 
@@ -19,13 +18,13 @@ pub struct TcpSettings {
 }
 
 pub struct TcpClient {
-    pub id: String,
+    pub id: Uuid,
     fd: Socket,
 }
 
 pub struct TcpServer {
     pub settings: TcpSettings,
-    pub id: String,
+    pub id: Uuid,
     fd: Socket,
     pub state: TcpServerState,
 }
@@ -48,6 +47,9 @@ impl Drop for TcpClient{
 impl TcpClient {
     pub fn read(&self, buffer: &mut [u8]) -> Result<usize, TcpHandlerError> {
         let bytes_received = receive_data(self.fd, buffer)?;
+        if bytes_received == 0 {
+            return Err(TcpHandlerError::ConnectionClosed);
+        }
         Ok(bytes_received)
     }
 
@@ -56,12 +58,10 @@ impl TcpClient {
         let bytes_sent = send_data(self.fd, data)?; // SocketError -> TcpHandlerError via From
 
         if bytes_sent != data.len() {
-            return Err(TcpHandlerError::TcpClientWriteError(
-                SocketError::SendDataError(std::io::Error::new(
-                    std::io::ErrorKind::WriteZero,
-                    format!("Failed to send all data: sent {bytes_sent} of {}", data.len()),
-                )),
-            ));
+            return Err(TcpHandlerError::PartialWrite {
+                sent: bytes_sent,
+                total: data.len(),
+            });
         }
         
         Ok(())
@@ -80,11 +80,11 @@ impl TcpServer {
         
         // Validate port and host
         if settings.port == 0 {
-            return Err(TcpHandlerError::TcpPortValidationError(format!("Invalid port number: {}", settings.port)));
+            return Err(TcpHandlerError::InvalidPort(format!("Invalid port number: {}", settings.port)));
         }
 
         if settings.host.is_empty() {
-            return Err(TcpHandlerError::TcpHostValidationError(format!("Invalid host: {}", settings.host)));
+            return Err(TcpHandlerError::InvalidHost(format!("Invalid host: {}", settings.host)));
         }
         
         // Create the TCP socket
@@ -93,7 +93,7 @@ impl TcpServer {
         // Return the TcpServer instance
         let server = TcpServer {
             settings,
-            id: format!("tcp-server-{}", Uuid::new_v4()),
+            id: Uuid::new_v4(),
             fd,
             state: TcpServerState::Created,
         };
@@ -105,7 +105,7 @@ impl TcpServer {
         
         if self.state != TcpServerState::Created
         {
-            return Err(TcpHandlerError::TcpStateError(format!("Invalid state for initialization: {:?}", self.state)));
+            return Err(TcpHandlerError::InvalidState(format!("Invalid state for initialization: {:?}", self.state)));
         }
 
         // Configure listener socket options before bind/listen.
@@ -125,14 +125,14 @@ impl TcpServer {
     pub fn run<H>(&self, handler: H) -> Result<(), TcpHandlerError> where H: Fn(TcpClient) + Send + Copy + 'static,
     {
         if self.state != TcpServerState::Listening {
-            return Err(TcpHandlerError::TcpStateError(format!("Invalid state for running server: {:?}", self.state)));
+            return Err(TcpHandlerError::InvalidState(format!("Invalid state for running server: {:?}", self.state)));
         }
 
         loop {
             let client_fd = accept_connection(self.fd)?; // blocking
 
             let client = TcpClient {
-                id: format!("tcp-client-{}", Uuid::new_v4()),
+                id: Uuid::new_v4(),
                 fd: client_fd,
             };
 

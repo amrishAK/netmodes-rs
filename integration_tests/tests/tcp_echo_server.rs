@@ -43,7 +43,7 @@ fn wait_for_server(port: u16, timeout: Duration) {
 }
 
 #[test]
-fn tcp_server_rejects_zero_port() {
+fn zero_port_failure() {
     let settings = TcpSettings {
         host: "127.0.0.1".to_string(),
         port: 0,
@@ -57,7 +57,53 @@ fn tcp_server_rejects_zero_port() {
 }
 
 #[test]
-fn tcp_echo_server_round_trip() {
+fn empty_host_failure() {
+    let settings = TcpSettings {
+        host: "".to_string(),
+        port: 8080,
+    };
+
+    let err = match TcpServer::new(settings) {
+        Ok(_) => panic!("expected invalid host error"),
+        Err(err) => err,
+    };
+    assert!(matches!(err, TcpHandlerError::InvalidHost(_)));
+}
+
+#[test]
+fn run_before_initialize_failure() {
+    let settings = TcpSettings {
+        host: "127.0.0.1".to_string(),
+        port: pick_free_port(),
+    };
+
+    let server = TcpServer::new(settings).expect("failed to create tcp server");
+    let err = server
+        .run(echo_client_handler)
+        .expect_err("run should fail before initialize");
+
+    assert!(matches!(err, TcpHandlerError::InvalidState(_)));
+}
+
+#[test]
+fn initialize_twice_failure() {
+    let settings = TcpSettings {
+        host: "127.0.0.1".to_string(),
+        port: pick_free_port(),
+    };
+
+    let mut server = TcpServer::new(settings).expect("failed to create tcp server");
+    server.initialize().expect("first initialize should succeed");
+
+    let err = server
+        .initialize()
+        .expect_err("second initialize should fail");
+
+    assert!(matches!(err, TcpHandlerError::InvalidState(_)));
+}
+
+#[test]
+fn echo_round_trip_success() {
     let port = pick_free_port();
 
     thread::spawn(move || {

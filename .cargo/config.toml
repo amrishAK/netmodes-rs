@@ -1,0 +1,3 @@
+[alias]
+test-unit = "test --lib --bins"
+test-integration = "test --manifest-path integration_tests/Cargo.toml"

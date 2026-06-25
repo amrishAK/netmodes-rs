@@ -2,6 +2,9 @@
 use super::socket_error::SocketError;
 use std::net::Ipv4Addr;
 
+/// Parse supported IPv4 host strings into a 32-bit address representation.
+///
+/// Accepts wildcard and localhost aliases in addition to dotted-quad literals.
 pub(crate) fn parse_ipv4_host(host: &str) -> Result<u32, SocketError> {
     if host.is_empty() || host == "0.0.0.0" {
         return Ok(0);

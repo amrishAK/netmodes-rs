@@ -6,6 +6,7 @@ use std::{mem, os::fd::RawFd};
 pub type Socket = RawFd;
 
 
+/// Build an `in_addr` value with network-byte-order contents for libc calls.
 pub(super) fn get_ipv4_host(host: &str) -> Result<in_addr, SocketError> {
     let host_addr = helper::parse_ipv4_host(host)?;
 

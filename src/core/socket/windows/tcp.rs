@@ -10,6 +10,7 @@ use windows_sys::Win32::Networking::WinSock::{
     SOCK_STREAM, SOCKADDR, SOCKADDR_IN, SO_EXCLUSIVEADDRUSE, SOL_SOCKET, SOCKET_ERROR,
 };
 
+/// Windows implementation of the TCP socket platform abstraction.
 pub struct WindowsTcpSocket;
 
 impl TcpSocketPlatform for WindowsTcpSocket {

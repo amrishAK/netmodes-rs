@@ -1,8 +1,11 @@
+/// Error type for socket operations across platform backends.
 pub mod socket_error;
 mod helper;
 mod tcp_platform;
 
+/// Unified socket error exposed to callers.
 pub use socket_error::SocketError;
+/// Trait describing platform-specific TCP socket behavior.
 pub use tcp_platform::TcpSocketPlatform;
 
 #[cfg(unix)]

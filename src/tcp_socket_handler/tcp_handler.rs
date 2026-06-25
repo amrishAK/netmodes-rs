@@ -4,28 +4,42 @@ use super::errors::TcpHandlerError;
 use std::thread::spawn;
 
 
+/// Lifecycle states for a TCP server instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpServerState {
+    /// Server instance was created but not yet initialized.
     Created,
+    /// Socket is bound to host and port.
     Bound,
+    /// Socket is actively listening for new connections.
     Listening,
+    /// Socket has been closed and cannot be reused.
     Closed,
 }
 
+/// Host/port configuration used to create a TCP server.
 pub struct TcpSettings {
+    /// IPv4 host or hostname understood by the socket layer.
     pub host: String,
+    /// Listening port.
     pub port: u16,
 }
 
+/// Connected TCP client handle.
 pub struct TcpClient {
+    /// Stable identifier for logging and connection tracking.
     pub id: Uuid,
     fd: Socket,
 }
 
+/// TCP server wrapper managing socket lifecycle and accept loop.
 pub struct TcpServer {
+    /// Immutable server bind/listen settings.
     pub settings: TcpSettings,
+    /// Stable identifier for server instance tracking.
     pub id: Uuid,
     fd: Socket,
+    /// Current server lifecycle state.
     pub state: TcpServerState,
 }
 
@@ -45,6 +59,9 @@ impl Drop for TcpClient{
 }
 
 impl TcpClient {
+    /// Read bytes from the client socket into the provided buffer.
+    ///
+    /// Returns `ConnectionClosed` when the peer performs an orderly shutdown.
     pub fn read(&self, buffer: &mut [u8]) -> Result<usize, TcpHandlerError> {
         let bytes_received = receive_data(self.fd, buffer)?;
         if bytes_received == 0 {
@@ -53,6 +70,7 @@ impl TcpClient {
         Ok(bytes_received)
     }
 
+    /// Write the full buffer to the socket, failing on partial sends.
     pub fn write(&self, data: &[u8]) -> Result<(), TcpHandlerError> 
     {
         let bytes_sent = send_data(self.fd, data)?; // SocketError -> TcpHandlerError via From
@@ -67,6 +85,7 @@ impl TcpClient {
         Ok(())
     }
 
+    /// Attempt a single socket send and return the number of bytes sent.
     pub fn write_partial(&self, data: &[u8]) -> Result<usize, TcpHandlerError> 
     {
         let bytes_sent = send_data(self.fd, data)?; // SocketError -> TcpHandlerError via From
@@ -76,6 +95,7 @@ impl TcpClient {
 
 impl TcpServer {
 
+    /// Create a server with validated settings and an open TCP socket.
     pub fn new(settings: TcpSettings) -> Result<Self, TcpHandlerError> {
         
         // Validate port and host
@@ -101,6 +121,7 @@ impl TcpServer {
         Ok(server)
     }
 
+    /// Configure, bind, and place the server socket into listening mode.
     pub fn initialize(&mut self) -> Result<(), TcpHandlerError> {
         
         if self.state != TcpServerState::Created
@@ -122,6 +143,7 @@ impl TcpServer {
     }
     
     
+    /// Accept clients in a loop and invoke the handler on a dedicated thread.
     pub fn run<H>(&self, handler: H) -> Result<(), TcpHandlerError> where H: Fn(TcpClient) + Send + Copy + 'static,
     {
         if self.state != TcpServerState::Listening {

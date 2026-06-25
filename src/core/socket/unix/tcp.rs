@@ -4,6 +4,7 @@ use crate::core::socket::tcp_platform::TcpSocketPlatform;
 use std::{mem, os::fd::RawFd};
 use libc::{accept, listen, AF_INET, SOCK_STREAM};
 
+/// Unix implementation of the TCP socket platform abstraction.
 pub struct UnixTcpSocket;
 
 impl UnixTcpSocket {

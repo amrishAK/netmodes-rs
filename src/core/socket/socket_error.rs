@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// Categorizes failures produced by low-level socket operations.
 #[derive(Debug, Error)]
 pub enum SocketError {
 	#[error("failed to create socket: {0}")]

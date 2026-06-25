@@ -1,7 +1,7 @@
 use thiserror::Error;
 use crate::core::socket::SocketError;
 
-// In TcpHandlerError
+/// Errors returned by TCP server lifecycle and client I/O operations.
 #[derive(Error, Debug)]
 pub enum TcpHandlerError {
     #[error("TCP server creation failed: invalid port: {0}")]

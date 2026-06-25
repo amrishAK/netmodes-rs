@@ -14,6 +14,7 @@ pub(super) fn as_socket(raw: Socket) -> SOCKET {
     raw as SOCKET
 }
 
+/// Initialize WinSock once per process before creating sockets.
 pub(super) fn ensure_winsock_initialized() -> Result<(), SocketError> {
     static WINSOCK_INIT: OnceLock<i32> = OnceLock::new();
 

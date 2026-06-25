@@ -1,62 +1,36 @@
-use uuid::Uuid;
-use crate::core::socket::*;
-use super::errors::TcpHandlerError;
+use std::marker::PhantomData;
 use std::thread::spawn;
+use uuid::Uuid;
 
+pub use crate::core::models::domain::state_type::{Created, Listening, Unconfigured};
+use crate::core::socket::*;
+pub use crate::core::models::domain::tcp::{TcpClient, TcpServer, TcpServerHandler, TcpServerConfiguration};
+pub type TcpSettings = TcpServerConfiguration;
 
-/// Lifecycle states for a TCP server instance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TcpServerState {
-    /// Server instance was created but not yet initialized.
-    Created,
-    /// Socket is bound to host and port.
-    Bound,
-    /// Socket is actively listening for new connections.
-    Listening,
-    /// Socket has been closed and cannot be reused.
-    Closed,
-}
-
-/// Host/port configuration used to create a TCP server.
-pub struct TcpSettings {
-    /// IPv4 host or hostname understood by the socket layer.
-    pub host: String,
-    /// Listening port.
-    pub port: u16,
-}
-
-/// Connected TCP client handle.
-pub struct TcpClient {
-    /// Stable identifier for logging and connection tracking.
-    pub id: Uuid,
-    fd: Socket,
-}
-
-/// TCP server wrapper managing socket lifecycle and accept loop.
-pub struct TcpServer {
-    /// Immutable server bind/listen settings.
-    pub settings: TcpSettings,
-    /// Stable identifier for server instance tracking.
-    pub id: Uuid,
-    fd: Socket,
-    /// Current server lifecycle state.
-    pub state: TcpServerState,
-}
-
-impl Drop for TcpServer{
-    fn drop(&mut self) {
-        if self.state != TcpServerState::Closed {
-            _ = close_socket(self.fd);
-            self.state = TcpServerState::Closed;
-        }
-    }
-}
+use super::errors::TcpHandlerError;
 
 impl Drop for TcpClient{
     fn drop(&mut self) {
         _ = close_socket(self.fd);
     }
 }
+
+impl Drop for TcpServer {
+    fn drop(&mut self) {
+        _ = close_socket(self.fd);
+    }
+}
+
+impl<State> TcpServerHandler<State> {
+    pub fn config(&self) -> &TcpServerConfiguration {
+        &self.server.config
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.server.id
+    }
+}
+
 
 impl TcpClient {
     /// Read bytes from the client socket into the provided buffer.
@@ -94,10 +68,8 @@ impl TcpClient {
 }
 
 impl TcpServer {
-
-    /// Create a server with validated settings and an open TCP socket.
-    pub fn new(settings: TcpSettings) -> Result<Self, TcpHandlerError> {
-        
+    /// Create a new TCP server instance with the provided settings.
+    pub fn new(settings: TcpSettings) -> Result<TcpServerHandler<Created>, TcpHandlerError> {
         // Validate port and host
         if settings.port == 0 {
             return Err(TcpHandlerError::InvalidPort(format!("Invalid port number: {}", settings.port)));
@@ -112,46 +84,43 @@ impl TcpServer {
         
         // Return the TcpServer instance
         let server = TcpServer {
-            settings,
+            config: settings,
             id: Uuid::new_v4(),
             fd,
-            state: TcpServerState::Created,
         };
 
-        Ok(server)
+        Ok(TcpServerHandler::<Created> {
+            server,
+            _state: PhantomData,
+        })
     }
+}
 
+impl TcpServerHandler<Created> {
     /// Configure, bind, and place the server socket into listening mode.
-    pub fn initialize(&mut self) -> Result<(), TcpHandlerError> {
-        
-        if self.state != TcpServerState::Created
-        {
-            return Err(TcpHandlerError::InvalidState(format!("Invalid state for initialization: {:?}", self.state)));
-        }
-
+    pub fn into_listening(self) -> Result<TcpServerHandler<Listening>, TcpHandlerError> {
         // Configure listener socket options before bind/listen.
-        configure_listener_socket(self.fd)?;
+        configure_listener_socket(self.server.fd)?;
 
         // Bind the socket to the specified host and port
-        bind_socket(self.fd, &self.settings.host, self.settings.port)?;
-        self.state = TcpServerState::Bound;
+        bind_socket(self.server.fd, &self.server.config.host, self.server.config.port)?;
 
         // Start listening for incoming connections
-        listen_socket(self.fd, 128)?;
-        self.state = TcpServerState::Listening;
-        Ok(())
+        listen_socket(self.server.fd, 128)?;
+
+        Ok(TcpServerHandler::<Listening> {
+            server: self.server,
+            _state: PhantomData,
+        })
     }
-    
-    
+}
+
+impl TcpServerHandler<Listening> {
     /// Accept clients in a loop and invoke the handler on a dedicated thread.
     pub fn run<H>(&self, handler: H) -> Result<(), TcpHandlerError> where H: Fn(TcpClient) + Send + Copy + 'static,
     {
-        if self.state != TcpServerState::Listening {
-            return Err(TcpHandlerError::InvalidState(format!("Invalid state for running server: {:?}", self.state)));
-        }
-
         loop {
-            let client_fd = accept_connection(self.fd)?; // blocking
+            let client_fd = accept_connection(self.server.fd)?; // blocking
 
             let client = TcpClient {
                 id: Uuid::new_v4(),
@@ -168,9 +137,18 @@ impl TcpServer {
 
 #[cfg(test)]
 mod tcp_handlers_tests {
-    use super::{TcpServer, TcpServerState, TcpSettings};
+    use std::net::TcpListener;
+
+    use super::{Created, Listening, TcpServer, TcpServerHandler, TcpSettings};
     use crate::tcp_socket_handler::TcpHandlerError;
-    use uuid::Uuid;
+
+    fn pick_free_port() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("failed to pick free port");
+        listener
+            .local_addr()
+            .expect("failed to read local address")
+            .port()
+    }
 
     #[test]
     fn new_with_zero_port_returns_invalid_port_failure() {
@@ -213,53 +191,18 @@ mod tcp_handlers_tests {
     }
 
     #[test]
-    fn initialize_when_closed_state_returns_invalid_state_failure() {
-        let mut server = TcpServer {
-            settings: TcpSettings {
-                host: "127.0.0.1".to_string(),
-                port: 8080,
-            },
-            id: Uuid::new_v4(),
-            fd: 0,
-            state: TcpServerState::Closed,
+    fn initialize_transitions_created_to_listening() {
+        let settings = TcpSettings {
+            host: "127.0.0.1".to_string(),
+            port: pick_free_port(),
         };
 
-        let err = server
+        let created_server: TcpServerHandler<Created> =
+            TcpServer::new(settings).expect("expected Created server");
+
+        let _listening_server: TcpServerHandler<Listening> = created_server
             .initialize()
-            .expect_err("initialize should fail outside Created state");
-
-        match err {
-            TcpHandlerError::InvalidState(msg) => {
-                assert!(msg.contains("Invalid state for initialization"));
-            }
-            other => panic!("expected InvalidState, got {other:?}"),
-        }
-
-        assert_eq!(server.state, TcpServerState::Closed);
-    }
-
-    #[test]
-    fn run_when_closed_state_returns_invalid_state_failure() {
-        let server = TcpServer {
-            settings: TcpSettings {
-                host: "127.0.0.1".to_string(),
-                port: 8080,
-            },
-            id: Uuid::new_v4(),
-            fd: 0,
-            state: TcpServerState::Closed,
-        };
-
-        let err = server
-            .run(|_| {})
-            .expect_err("run should fail outside Listening state");
-
-        match err {
-            TcpHandlerError::InvalidState(msg) => {
-                assert!(msg.contains("Invalid state for running server"));
-            }
-            other => panic!("expected InvalidState, got {other:?}"),
-        }
+            .expect("expected transition to Listening");
     }
 }
 

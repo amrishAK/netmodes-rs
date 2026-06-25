@@ -24,14 +24,14 @@ fn main() {
         port: 5500,
     };
 
-    let mut server = TcpServer::new(server_settings).expect("Failed to create TCP server");
+    let tcp_server_handler = TcpServer::new(server_settings).expect("Failed to create TCP server");
     println!(
         "TCP server is listening on {}:{}",
-        server.settings.host, server.settings.port
+        tcp_server_handler.config().host, tcp_server_handler.config().port
     );
 
-    server.initialize().expect("Failed to initialize TCP server");
+    let tcp_server_handler = tcp_server_handler.into_listening().expect("Failed to initialize TCP server");
     println!("TCP server has been initialized and is accepting connections");
 
-    server.run(tcp_client_handler).expect("Failed to run TCP server");
+    tcp_server_handler.run(tcp_client_handler).expect("Failed to run TCP server");
 }

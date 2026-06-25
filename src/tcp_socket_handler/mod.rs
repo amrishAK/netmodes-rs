@@ -6,4 +6,4 @@ pub mod tcp_handler;
 /// Unified error returned by TCP handler operations.
 pub use errors::TcpHandlerError;
 /// Public TCP settings and runtime types.
-pub use tcp_handler::{TcpSettings, TcpServer, TcpClient};
+pub use tcp_handler::{Created, Listening, TcpClient, TcpServer, TcpServerHandler, TcpServerConfiguration, TcpSettings, Unconfigured};

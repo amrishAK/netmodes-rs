@@ -71,35 +71,19 @@ fn empty_host_failure() {
 }
 
 #[test]
-fn run_before_initialize_failure() {
+fn initialize_transitions_to_listening_success() {
     let settings = TcpSettings {
         host: "127.0.0.1".to_string(),
         port: pick_free_port(),
     };
 
     let server = TcpServer::new(settings).expect("failed to create tcp server");
-    let err = server
-        .run(echo_client_handler)
-        .expect_err("run should fail before initialize");
+    let listening_server = server
+        .into_listening()
+        .expect("into_listening should transition to listening");
 
-    assert!(matches!(err, TcpHandlerError::InvalidState(_)));
-}
-
-#[test]
-fn initialize_twice_failure() {
-    let settings = TcpSettings {
-        host: "127.0.0.1".to_string(),
-        port: pick_free_port(),
-    };
-
-    let mut server = TcpServer::new(settings).expect("failed to create tcp server");
-    server.initialize().expect("first initialize should succeed");
-
-    let err = server
-        .initialize()
-        .expect_err("second initialize should fail");
-
-    assert!(matches!(err, TcpHandlerError::InvalidState(_)));
+    // Typestate prevents calling initialize a second time at compile time.
+    drop(listening_server);
 }
 
 #[test]
@@ -112,8 +96,10 @@ fn echo_round_trip_success() {
             port,
         };
 
-        let mut server = TcpServer::new(settings).expect("failed to create tcp server");
-        server.initialize().expect("failed to initialize tcp server");
+        let server = TcpServer::new(settings).expect("failed to create tcp server");
+        let server = server
+            .into_listening()
+            .expect("failed to transition server to listening state");
 
         let _ = server.run(echo_client_handler);
     });

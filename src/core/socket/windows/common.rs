@@ -4,14 +4,19 @@ use std::mem;
 use std::os::windows::io::RawSocket;
 use std::sync::OnceLock;
 use windows_sys::Win32::Networking::WinSock::{
-    bind, closesocket, WSAStartup, AF_INET, SOCKADDR, SOCKADDR_IN, SOCKET, SOCKET_ERROR,
-    WSADATA,
+    bind, closesocket, WSAGetLastError, WSAStartup, AF_INET, SOCKADDR, SOCKADDR_IN, SOCKET,
+    SOCKET_ERROR, WSADATA,
 };
 
 pub type Socket = RawSocket;
 
 pub(super) fn as_socket(raw: Socket) -> SOCKET {
     raw as SOCKET
+}
+
+pub(super) fn wsa_last_error() -> std::io::Error {
+    let code = unsafe { WSAGetLastError() };
+    std::io::Error::from_raw_os_error(code)
 }
 
 /// Initialize WinSock once per process before creating sockets.
@@ -47,7 +52,7 @@ pub(super) fn bind_ipv4_socket(fd: Socket, host: &str, port: u16) -> Result<(), 
     };
 
     if ret == SOCKET_ERROR {
-        return Err(SocketError::BindSocket(std::io::Error::last_os_error()));
+        return Err(SocketError::BindSocket(wsa_last_error()));
     }
 
     Ok(())
@@ -57,7 +62,7 @@ pub(super) fn close_ipv4_socket(fd: Socket) -> Result<(), SocketError> {
     let ret = unsafe { closesocket(as_socket(fd)) };
 
     if ret == SOCKET_ERROR {
-        return Err(SocketError::CloseSocket(std::io::Error::last_os_error()));
+        return Err(SocketError::CloseSocket(wsa_last_error()));
     }
 
     Ok(())

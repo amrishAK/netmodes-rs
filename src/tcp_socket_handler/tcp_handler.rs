@@ -166,3 +166,100 @@ impl TcpServer {
     }
 }
 
+#[cfg(test)]
+mod tcp_handlers_tests {
+    use super::{TcpServer, TcpServerState, TcpSettings};
+    use crate::tcp_socket_handler::TcpHandlerError;
+    use uuid::Uuid;
+
+    #[test]
+    fn new_with_zero_port_returns_invalid_port_failure() {
+        let settings = TcpSettings {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+        };
+
+        let err = match TcpServer::new(settings) {
+            Ok(_) => panic!("port 0 should be rejected"),
+            Err(err) => err,
+        };
+
+        match err {
+            TcpHandlerError::InvalidPort(msg) => {
+                assert!(msg.contains("Invalid port number"));
+            }
+            other => panic!("expected InvalidPort, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn new_with_empty_host_returns_invalid_host_failure() {
+        let settings = TcpSettings {
+            host: "".to_string(),
+            port: 8080,
+        };
+
+        let err = match TcpServer::new(settings) {
+            Ok(_) => panic!("empty host should be rejected"),
+            Err(err) => err,
+        };
+
+        match err {
+            TcpHandlerError::InvalidHost(msg) => {
+                assert!(msg.contains("Invalid host"));
+            }
+            other => panic!("expected InvalidHost, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn initialize_when_closed_state_returns_invalid_state_failure() {
+        let mut server = TcpServer {
+            settings: TcpSettings {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+            },
+            id: Uuid::new_v4(),
+            fd: 0,
+            state: TcpServerState::Closed,
+        };
+
+        let err = server
+            .initialize()
+            .expect_err("initialize should fail outside Created state");
+
+        match err {
+            TcpHandlerError::InvalidState(msg) => {
+                assert!(msg.contains("Invalid state for initialization"));
+            }
+            other => panic!("expected InvalidState, got {other:?}"),
+        }
+
+        assert_eq!(server.state, TcpServerState::Closed);
+    }
+
+    #[test]
+    fn run_when_closed_state_returns_invalid_state_failure() {
+        let server = TcpServer {
+            settings: TcpSettings {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+            },
+            id: Uuid::new_v4(),
+            fd: 0,
+            state: TcpServerState::Closed,
+        };
+
+        let err = server
+            .run(|_| {})
+            .expect_err("run should fail outside Listening state");
+
+        match err {
+            TcpHandlerError::InvalidState(msg) => {
+                assert!(msg.contains("Invalid state for running server"));
+            }
+            other => panic!("expected InvalidState, got {other:?}"),
+        }
+    }
+}
+

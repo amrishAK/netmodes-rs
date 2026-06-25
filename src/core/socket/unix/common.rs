@@ -11,8 +11,8 @@ pub(super) fn get_ipv4_host(host: &str) -> Result<in_addr, SocketError> {
     let host_addr = helper::parse_ipv4_host(host)?;
 
     Ok(in_addr {
-        // Linux/BSD expect s_addr in network byte order.
-        s_addr: host_addr.to_be(),
+        // Keep the same in-memory network-order octets produced by parse_ipv4_host.
+        s_addr: host_addr,
     })
 }
 

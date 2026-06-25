@@ -1,6 +1,7 @@
 
 use super::common::{
-    as_socket, bind_ipv4_socket, close_ipv4_socket, ensure_winsock_initialized, Socket,
+    as_socket, bind_ipv4_socket, close_ipv4_socket, ensure_winsock_initialized, wsa_last_error,
+    Socket,
 };
 use crate::core::socket::socket_error::SocketError;
 use crate::core::socket::tcp_platform::TcpSocketPlatform;
@@ -22,7 +23,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         let sock = unsafe { socket(AF_INET as i32, SOCK_STREAM, IPPROTO_TCP as i32) };
 
         if sock == INVALID_SOCKET {
-            return Err(SocketError::CreateSocket(std::io::Error::last_os_error()));
+            return Err(SocketError::CreateSocket(wsa_last_error()));
         }
 
         Ok(sock as Socket)
@@ -44,7 +45,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         };
 
         if ret == SOCKET_ERROR {
-            return Err(SocketError::SetSocketOption(std::io::Error::last_os_error()));
+            return Err(SocketError::SetSocketOption(wsa_last_error()));
         }
 
         Ok(())
@@ -58,7 +59,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         let ret = unsafe { listen(as_socket(fd), backlog) };
 
         if ret == SOCKET_ERROR {
-            return Err(SocketError::ListenSocket(std::io::Error::last_os_error()));
+            return Err(SocketError::ListenSocket(wsa_last_error()));
         }
 
         Ok(())
@@ -77,7 +78,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         };
 
         if client == INVALID_SOCKET {
-            return Err(SocketError::AcceptConnection(std::io::Error::last_os_error()));
+            return Err(SocketError::AcceptConnection(wsa_last_error()));
         }
 
         Ok(client as Socket)
@@ -98,7 +99,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         let ret = unsafe { send(as_socket(fd), data.as_ptr(), data.len() as i32, 0) };
 
         if ret == SOCKET_ERROR {
-            return Err(SocketError::SendData(std::io::Error::last_os_error()));
+            return Err(SocketError::SendData(wsa_last_error()));
         }
 
         Ok(ret as usize)
@@ -115,7 +116,7 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         let ret = unsafe { recv(as_socket(fd), buffer.as_mut_ptr(), buffer.len() as i32, 0) };
 
         if ret == SOCKET_ERROR {
-            return Err(SocketError::ReceiveData(std::io::Error::last_os_error()));
+            return Err(SocketError::ReceiveData(wsa_last_error()));
         }
 
         Ok(ret as usize)

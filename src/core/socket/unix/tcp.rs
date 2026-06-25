@@ -106,11 +106,19 @@ impl TcpSocketPlatform for UnixTcpSocket {
     }
 
     fn accept_connection(fd: Self::Socket) -> Result<Self::Socket, SocketError> {
-        let client_fd = unsafe { accept(fd, std::ptr::null_mut(), std::ptr::null_mut()) };
-        if client_fd < 0 {
-            return Err(SocketError::AcceptConnection(std::io::Error::last_os_error()));
+        loop {
+            let client_fd = unsafe { accept(fd, std::ptr::null_mut(), std::ptr::null_mut()) };
+            if client_fd >= 0 {
+                return Ok(client_fd);
+            }
+
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+
+            return Err(SocketError::AcceptConnection(err));
         }
-        Ok(client_fd)
     }
 
     fn close_socket(fd: Self::Socket) -> Result<(), SocketError> {

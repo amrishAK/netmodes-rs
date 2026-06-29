@@ -4,6 +4,15 @@ use crate::core::socket::SocketError;
 /// Errors returned by TCP server lifecycle and client I/O operations.
 #[derive(Error, Debug)]
 pub enum TcpHandlerError {
+    #[error("TCP client not found: {0}")]
+    ClientNotFound(String),
+
+    #[error("TCP client lock poisoned")]
+    ClientLockError,
+
+    #[error("TCP context lock poisoned")]
+    ContextLockError,
+
     #[error("TCP server creation failed: invalid port: {0}")]
     InvalidPort(String),
 
@@ -12,6 +21,9 @@ pub enum TcpHandlerError {
 
     #[error("TCP server creation failed: invalid state: {0}")]
     InvalidState(String),
+
+    #[error("TCP client registration failed: {0}")]
+    RegistrationError(String),
 
     #[error("TCP socket error: {0}")]
     Socket(#[from] SocketError),

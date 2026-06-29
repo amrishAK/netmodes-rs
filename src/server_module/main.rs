@@ -1,27 +1,15 @@
+use std::sync::Arc;
+
+use netmodes_rs::core::models::domain::tcp::{ClientHandler, ContextHandler, OnMessageHandler};
 use netmodes_rs::tcp_socket_handler::*;
 
-fn tcp_client_handler(client: TcpClient) {
-    let mut buffer = [0; 512];
 
-    loop {
-        match client.read(&mut buffer) {
-            Ok(0) => break, // EOF
-            Ok(n) => {
-                client.write(&buffer[..n]).unwrap();
-                println!("Received: {}", String::from_utf8_lossy(&buffer[..n]));
-            }
-            Err(e) => {
-                println!("Error occurred while receiving message from client: {}", e);
-                break;
-            }
-        }
-    }
-}
 
 fn main() {
     let server_settings = TcpSettings {
         host: "0.0.0.0".to_string(),
         port: 5500,
+        max_buffer_size: 8192,
     };
 
     let tcp_server_handler = TcpServer::new(server_settings).expect("Failed to create TCP server");
@@ -33,5 +21,19 @@ fn main() {
     let tcp_server_handler = tcp_server_handler.into_listening().expect("Failed to initialize TCP server");
     println!("TCP server has been initialized and is accepting connections");
 
-    tcp_server_handler.run(tcp_client_handler).expect("Failed to run TCP server");
+    let on_message_handler: OnMessageHandler = Arc::new(|client_handler: &ClientHandler, _context_handler: ContextHandler, data: &[u8]| {
+        client_handler.reply(data).expect("Failed to send reply to client");
+        match client_handler.get_client_id() {
+            Ok(client_id) => {
+                println!("Received message from client {}: {}", client_id, String::from_utf8_lossy(data));
+            }
+            Err(err) => {
+                eprintln!("Failed to get client ID: {:?}", err);
+            }
+        }
+    });
+
+    tcp_server_handler
+        .run(on_message_handler)
+        .expect("Failed to run TCP server");
 }

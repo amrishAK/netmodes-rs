@@ -1,24 +1,15 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use netmodes_rs::tcp_socket_handler::{TcpClient, TcpHandlerError, TcpServer, TcpSettings};
+use netmodes_rs::tcp_socket_handler::{TcpHandlerError, TcpServer, TcpSettings};
 
-fn echo_client_handler(client: TcpClient) {
-    let mut buffer = [0_u8; 1024];
-
-    loop {
-        match client.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => {
-                if client.write(&buffer[..n]).is_err() {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
+fn echo_message_handler() -> Arc<dyn Fn(&netmodes_rs::core::models::domain::tcp::ClientHandler, netmodes_rs::core::models::domain::tcp::ContextHandler, &[u8]) + Send + Sync + 'static> {
+    Arc::new(|client, _context, data| {
+        let _ = client.reply(data);
+    })
 }
 
 fn pick_free_port() -> u16 {
@@ -47,6 +38,7 @@ fn zero_port_failure() {
     let settings = TcpSettings {
         host: "127.0.0.1".to_string(),
         port: 0,
+        max_buffer_size: 1024,
     };
 
     let err = match TcpServer::new(settings) {
@@ -61,6 +53,7 @@ fn empty_host_failure() {
     let settings = TcpSettings {
         host: "".to_string(),
         port: 8080,
+        max_buffer_size: 1024,
     };
 
     let err = match TcpServer::new(settings) {
@@ -75,6 +68,7 @@ fn initialize_transitions_to_listening_success() {
     let settings = TcpSettings {
         host: "127.0.0.1".to_string(),
         port: pick_free_port(),
+        max_buffer_size: 1024,
     };
 
     let server = TcpServer::new(settings).expect("failed to create tcp server");
@@ -94,6 +88,7 @@ fn echo_round_trip_success() {
         let settings = TcpSettings {
             host: "127.0.0.1".to_string(),
             port,
+            max_buffer_size: 1024,
         };
 
         let server = TcpServer::new(settings).expect("failed to create tcp server");
@@ -101,7 +96,7 @@ fn echo_round_trip_success() {
             .into_listening()
             .expect("failed to transition server to listening state");
 
-        let _ = server.run(echo_client_handler);
+        let _ = server.run(echo_message_handler());
     });
 
     wait_for_server(port, Duration::from_secs(3));

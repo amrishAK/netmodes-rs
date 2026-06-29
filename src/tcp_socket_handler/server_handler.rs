@@ -1,25 +1,17 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::thread::spawn;
 use uuid::Uuid;
 
 pub use crate::core::models::domain::state_type::{Created, Listening, Unconfigured};
+use crate::core::registry::client_registry::ClientRegistry;
 use crate::core::socket::*;
-pub use crate::core::models::domain::tcp::{TcpClient, TcpServer, TcpServerHandler, TcpServerConfiguration};
+pub use crate::core::models::domain::tcp::*;
 pub type TcpSettings = TcpServerConfiguration;
 
 use super::errors::TcpHandlerError;
+use super::tcp_client_handler;
 
-impl Drop for TcpClient{
-    fn drop(&mut self) {
-        _ = close_socket(self.fd);
-    }
-}
-
-impl Drop for TcpServer {
-    fn drop(&mut self) {
-        _ = close_socket(self.fd);
-    }
-}
 
 impl<State> TcpServerHandler<State> {
     pub fn config(&self) -> &TcpServerConfiguration {
@@ -31,41 +23,6 @@ impl<State> TcpServerHandler<State> {
     }
 }
 
-
-impl TcpClient {
-    /// Read bytes from the client socket into the provided buffer.
-    ///
-    /// Returns `ConnectionClosed` when the peer performs an orderly shutdown.
-    pub fn read(&self, buffer: &mut [u8]) -> Result<usize, TcpHandlerError> {
-        let bytes_received = receive_data(self.fd, buffer)?;
-        if bytes_received == 0 {
-            return Err(TcpHandlerError::ConnectionClosed);
-        }
-        Ok(bytes_received)
-    }
-
-    /// Write the full buffer to the socket, failing on partial sends.
-    pub fn write(&self, data: &[u8]) -> Result<(), TcpHandlerError> 
-    {
-        let bytes_sent = send_data(self.fd, data)?; // SocketError -> TcpHandlerError via From
-
-        if bytes_sent != data.len() {
-            return Err(TcpHandlerError::PartialWrite {
-                sent: bytes_sent,
-                total: data.len(),
-            });
-        }
-        
-        Ok(())
-    }
-
-    /// Attempt a single socket send and return the number of bytes sent.
-    pub fn write_partial(&self, data: &[u8]) -> Result<usize, TcpHandlerError> 
-    {
-        let bytes_sent = send_data(self.fd, data)?; // SocketError -> TcpHandlerError via From
-        Ok(bytes_sent)
-    }
-}
 
 impl TcpServer {
     /// Create a new TCP server instance with the provided settings.
@@ -82,16 +39,39 @@ impl TcpServer {
         // Create the TCP socket
         let fd = create_tcp_socket()?;
         
-        // Return the TcpServer instance
+        // Create the TcpServerHandler in the Created state
+        let server_handler = Self::get_tcp_server_handler(fd, settings)?;
+
+        Ok(server_handler)
+    }
+
+    fn get_tcp_server_handler(
+        server_fd: Socket,
+        settings: TcpSettings,
+    ) -> Result<TcpServerHandler<Created>, TcpHandlerError> {
+        
+        // Extract buffer size before settings is moved
+        let buffer_size = settings.max_buffer_size;
+        
+        // Create the TcpServer instance
         let server = TcpServer {
             config: settings,
             id: Uuid::new_v4(),
-            fd,
+            fd: server_fd
         };
 
+        // Create the TcpContext with a new ClientRegistry
+        let context = TcpContext {
+            server_id: server.id,
+            registry: ClientRegistry::new(),
+            max_buffer_size: buffer_size,
+        };
+
+        // Return the TcpServerHandler in the Created state
         Ok(TcpServerHandler::<Created> {
-            server,
-            _state: PhantomData,
+            server: server,
+            context: Arc::new(context),
+            _state: PhantomData
         })
     }
 }
@@ -110,6 +90,7 @@ impl TcpServerHandler<Created> {
 
         Ok(TcpServerHandler::<Listening> {
             server: self.server,
+            context: self.context,
             _state: PhantomData,
         })
     }
@@ -117,19 +98,31 @@ impl TcpServerHandler<Created> {
 
 impl TcpServerHandler<Listening> {
     /// Accept clients in a loop and invoke the handler on a dedicated thread.
-    pub fn run<H>(&self, handler: H) -> Result<(), TcpHandlerError> where H: Fn(TcpClient) + Send + Copy + 'static,
-    {
+    pub fn run(&self, message_handler: OnMessageHandler) -> Result<(), TcpHandlerError> {
         loop {
             let client_fd = accept_connection(self.server.fd)?; // blocking
-
+            
             let client = TcpClient {
                 id: Uuid::new_v4(),
                 fd: client_fd,
             };
 
+            // Register the client in the context's registry
+            let client_id = client.id;
+            self.context
+                .registry
+                .add_item(client_id, client)
+                .map_err(|err| {
+                    TcpHandlerError::RegistrationError(format!(
+                        "failed to register client {client_id}: {err}"
+                    ))
+                })?;
+
             // user-provided connection handler
+            let context = ContextHandler(self.context.clone());
+            let message_handler = Arc::clone(&message_handler);
             spawn(move || {
-                handler(client);
+                tcp_client_handler(client_id, context, message_handler);
             });
         }
     }
@@ -138,9 +131,18 @@ impl TcpServerHandler<Listening> {
 #[cfg(test)]
 mod tcp_handlers_tests {
     use std::net::TcpListener;
+    use uuid::Uuid;
 
     use super::{Created, Listening, TcpServer, TcpServerHandler, TcpSettings};
     use crate::tcp_socket_handler::TcpHandlerError;
+
+    fn loopback_settings(port: u16) -> TcpSettings {
+        TcpSettings {
+            host: "127.0.0.1".to_string(),
+            port,
+            max_buffer_size: 1024,
+        }
+    }
 
     fn pick_free_port() -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").expect("failed to pick free port");
@@ -152,10 +154,7 @@ mod tcp_handlers_tests {
 
     #[test]
     fn new_with_zero_port_returns_invalid_port_failure() {
-        let settings = TcpSettings {
-            host: "127.0.0.1".to_string(),
-            port: 0,
-        };
+        let settings = loopback_settings(0);
 
         let err = match TcpServer::new(settings) {
             Ok(_) => panic!("port 0 should be rejected"),
@@ -172,10 +171,7 @@ mod tcp_handlers_tests {
 
     #[test]
     fn new_with_empty_host_returns_invalid_host_failure() {
-        let settings = TcpSettings {
-            host: "".to_string(),
-            port: 8080,
-        };
+        let settings = TcpSettings { host: "".to_string(), port: 8080, max_buffer_size: 1024 };
 
         let err = match TcpServer::new(settings) {
             Ok(_) => panic!("empty host should be rejected"),
@@ -191,18 +187,33 @@ mod tcp_handlers_tests {
     }
 
     #[test]
-    fn initialize_transitions_created_to_listening() {
-        let settings = TcpSettings {
-            host: "127.0.0.1".to_string(),
-            port: pick_free_port(),
-        };
+    fn new_returns_created_handler_with_config_and_id_success() {
+        let settings = loopback_settings(pick_free_port());
 
         let created_server: TcpServerHandler<Created> =
             TcpServer::new(settings).expect("expected Created server");
 
-        let _listening_server: TcpServerHandler<Listening> = created_server
-            .initialize()
+        assert_eq!(created_server.config().host, "127.0.0.1");
+        assert_ne!(created_server.config().port, 0);
+        assert_ne!(created_server.id(), Uuid::nil());
+    }
+
+    #[test]
+    fn into_listening_preserves_server_identity_success() {
+        let settings = loopback_settings(pick_free_port());
+
+        let created_server: TcpServerHandler<Created> =
+            TcpServer::new(settings).expect("expected Created server");
+        let created_id = created_server.id();
+        let created_host = created_server.config().host.clone();
+        let created_port = created_server.config().port;
+
+        let _listening_server: TcpServerHandler<Listening> = created_server.into_listening()
             .expect("expected transition to Listening");
+
+        assert_eq!(_listening_server.id(), created_id);
+        assert_eq!(_listening_server.config().host, created_host);
+        assert_eq!(_listening_server.config().port, created_port);
     }
 }
 

@@ -1,13 +1,13 @@
 use crate::core::socket::*;
-use crate::core::models::domain::tcp::{ClientHandler, ContextHandler, OnMessageHandler, TcpClient};
+use crate::core::models::domain::tcp::{ContextHandler, OnMessageHandler, TcpPeerConnection, TcpClientSession};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
-use super::errors::TcpHandlerError;
+use crate::tcp_socket_handler::errors::TcpHandlerError;
 
 
-impl ClientHandler {
+impl TcpClientSession {
     
-    fn new(client: Arc<RwLock<TcpClient>>) -> Self {
+    fn new(client: Arc<RwLock<TcpPeerConnection>>) -> Self {
         Self(client)
     }
 
@@ -28,7 +28,7 @@ impl ClientHandler {
     }
 }
 
-impl TcpClient {
+impl TcpPeerConnection {
     /// Read bytes from the client socket into the provided buffer.
     pub fn read(&self, buffer: &mut [u8]) -> Result<usize, TcpHandlerError> {
         receive_data(self.fd, buffer).map_err(Into::into)
@@ -57,19 +57,19 @@ impl TcpClient {
     }
 }
 
-impl Drop for TcpClient {
+impl Drop for TcpPeerConnection {
     fn drop(&mut self) {
         _ = close_socket(self.fd);
     }
 }
 
-fn get_read_lock(client: &Arc<RwLock<TcpClient>>) -> Result<std::sync::RwLockReadGuard<'_, TcpClient>, TcpHandlerError> {
+fn get_read_lock(client: &Arc<RwLock<TcpPeerConnection>>) -> Result<std::sync::RwLockReadGuard<'_, TcpPeerConnection>, TcpHandlerError> {
     client.read().map_err(|_| TcpHandlerError::ClientLockError)
 }
 
-pub(crate) fn tcp_client_handler(client_id: Uuid, tcp_context: ContextHandler, message_handler: OnMessageHandler) {
+pub(crate) fn run_client_session(client_id: Uuid, tcp_context: ContextHandler, message_handler: OnMessageHandler) {
     
-    let client : Arc<RwLock<TcpClient>> = match tcp_context.get_client(client_id) {
+    let client : Arc<RwLock<TcpPeerConnection>> = match tcp_context.get_client(client_id) {
         Ok(handler) => handler,
         Err(err) => {
             eprintln!("Failed to retrieve client handler for client {}: {:?}", client_id, err);
@@ -79,14 +79,14 @@ pub(crate) fn tcp_client_handler(client_id: Uuid, tcp_context: ContextHandler, m
 
     let buffer_size = tcp_context.0.max_buffer_size;
     let mut buffer = vec![0u8; buffer_size];
-    let handler = ClientHandler::new(client.clone());
+    let handler = TcpClientSession::new(client.clone());
 
     loop {
         let bytes_read = {
             let read_lock = match get_read_lock(&client) {
                 Ok(lock) => lock,
                 Err(err) => {
-                    eprintln!("Failed to acquire read lock on TcpClient for client {}: {:?}", client_id, err);
+                    eprintln!("Failed to acquire read lock on TcpPeerConnection for client {}: {:?}", client_id, err);
                     break;
                 }
             };
@@ -120,7 +120,7 @@ pub(crate) fn tcp_client_handler(client_id: Uuid, tcp_context: ContextHandler, m
 
 #[cfg(test)]
 mod tests {
-    use super::{tcp_client_handler, ClientHandler, ContextHandler, OnMessageHandler, TcpClient};
+    use super::{run_client_session, ContextHandler, OnMessageHandler, TcpPeerConnection, TcpClientSession};
     use crate::core::models::domain::tcp::TcpContext;
     use crate::core::registry::client_registry::ClientRegistry;
     use std::io::Write;
@@ -145,7 +145,7 @@ mod tests {
         ContextHandler::new(Arc::new(context))
     }
 
-    fn connected_client_pair() -> (TcpClient, TcpStream) {
+    fn connected_client_pair() -> (TcpPeerConnection, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind listener");
         let addr = listener.local_addr().expect("failed to read listener address");
 
@@ -157,7 +157,7 @@ mod tests {
         #[cfg(windows)]
         let raw_socket = server_stream.into_raw_socket();
 
-        let client = TcpClient {
+        let client = TcpPeerConnection {
             id: Uuid::new_v4(),
             fd: raw_socket,
         };
@@ -169,7 +169,7 @@ mod tests {
     fn get_client_id_returns_underlying_client_id_success() {
         let (client, _peer_stream) = connected_client_pair();
         let expected_id = client.id;
-        let handler = ClientHandler::new(Arc::new(RwLock::new(client)));
+        let handler = TcpClientSession::new(Arc::new(RwLock::new(client)));
 
         let actual_id = handler.get_client_id().expect("get_client_id should succeed");
 
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn reply_writes_data_to_peer_success() {
         let (client, mut peer_stream) = connected_client_pair();
-        let handler = ClientHandler::new(Arc::new(RwLock::new(client)));
+        let handler = TcpClientSession::new(Arc::new(RwLock::new(client)));
         let payload = b"reply-message";
 
         handler.reply(payload).expect("reply should succeed");
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn tcp_client_handler_forwards_message_and_removes_client_success() {
+    fn run_client_session_forwards_message_and_removes_client_success() {
         let tcp_context = make_context_handler();
         let (client, mut peer_stream) = connected_client_pair();
         let client_id = client.id;
@@ -213,7 +213,7 @@ mod tests {
 
         let context_for_thread = tcp_context.clone();
         let handle = thread::spawn(move || {
-            tcp_client_handler(client_id, context_for_thread, message_handler);
+            run_client_session(client_id, context_for_thread, message_handler);
         });
 
         let payload = b"hello-from-peer";
@@ -224,7 +224,7 @@ mod tests {
             .shutdown(Shutdown::Write)
             .expect("failed to shutdown write half");
 
-        handle.join().expect("tcp_client_handler thread should exit");
+        handle.join().expect("run_client_session thread should exit");
 
         let recorded = observed.lock().expect("message buffer lock poisoned").clone();
         assert_eq!(recorded, payload);
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn tcp_client_handler_missing_client_does_not_invoke_handler_success() {
+    fn run_client_session_missing_client_does_not_invoke_handler_success() {
         let tcp_context = make_context_handler();
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_ref = Arc::clone(&call_count);
@@ -241,7 +241,7 @@ mod tests {
             call_count_ref.fetch_add(1, Ordering::SeqCst);
         });
 
-        tcp_client_handler(Uuid::new_v4(), tcp_context, message_handler);
+        run_client_session(Uuid::new_v4(), tcp_context, message_handler);
 
         assert_eq!(call_count.load(Ordering::SeqCst), 0);
     }

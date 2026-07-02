@@ -121,6 +121,35 @@ impl TcpSocketPlatform for UnixTcpSocket {
         }
     }
 
+    fn connect_socket(fd: Self::Socket, host: &str, port: u16) -> Result<(), SocketError> {
+        let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+        addr.sin_family = libc::AF_INET as u16;
+        addr.sin_port = port.to_be();
+        addr.sin_addr = super::common::get_ipv4_host(host)?;
+
+        loop {
+            let ret = unsafe {
+                libc::connect(
+                    fd,
+                    &addr as *const libc::sockaddr_in as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                )
+            };
+
+            if ret == 0 {
+                return Ok(());
+            }
+
+            let err = std::io::Error::last_os_error();
+            
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+
+            return Err(SocketError::ConnectSocket(err));
+        }
+    }
+
     fn close_socket(fd: Self::Socket) -> Result<(), SocketError> {
         let ret = unsafe { libc::close(fd) };
         if ret < 0 {

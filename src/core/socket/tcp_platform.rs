@@ -21,4 +21,6 @@ pub trait TcpSocketPlatform {
     fn send_data(fd: Self::Socket, data: &[u8]) -> Result<usize, SocketError>;
     /// Read bytes from a connected socket into the provided buffer.
     fn receive_data(fd: Self::Socket, buffer: &mut [u8]) -> Result<usize, SocketError>;
+    /// Connect a socket to the provided host and port.
+    fn connect_socket(fd: Self::Socket, host: &str, port: u16) -> Result<(), SocketError>;
 }

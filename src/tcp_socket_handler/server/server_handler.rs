@@ -7,10 +7,9 @@ pub use crate::core::models::domain::state_type::{Created, Listening, Unconfigur
 use crate::core::registry::client_registry::ClientRegistry;
 use crate::core::socket::*;
 pub use crate::core::models::domain::tcp::*;
-pub type TcpSettings = TcpServerConfiguration;
 
-use super::errors::TcpHandlerError;
-use super::tcp_client_handler;
+use crate::tcp_socket_handler::server::run_client_session;
+use crate::tcp_socket_handler::errors::TcpHandlerError;
 
 
 impl<State> TcpServerHandler<State> {
@@ -26,7 +25,7 @@ impl<State> TcpServerHandler<State> {
 
 impl TcpServer {
     /// Create a new TCP server instance with the provided settings.
-    pub fn new(settings: TcpSettings) -> Result<TcpServerHandler<Created>, TcpHandlerError> {
+    pub fn new(settings: TcpServerConfiguration) -> Result<TcpServerHandler<Created>, TcpHandlerError> {
         // Validate port and host
         if settings.port == 0 {
             return Err(TcpHandlerError::InvalidPort(format!("Invalid port number: {}", settings.port)));
@@ -47,7 +46,7 @@ impl TcpServer {
 
     fn get_tcp_server_handler(
         server_fd: Socket,
-        settings: TcpSettings,
+        settings: TcpServerConfiguration,
     ) -> Result<TcpServerHandler<Created>, TcpHandlerError> {
         
         // Extract buffer size before settings is moved
@@ -102,7 +101,7 @@ impl TcpServerHandler<Listening> {
         loop {
             let client_fd = accept_connection(self.server.fd)?; // blocking
             
-            let client = TcpClient {
+            let client = TcpPeerConnection {
                 id: Uuid::new_v4(),
                 fd: client_fd,
             };
@@ -122,7 +121,7 @@ impl TcpServerHandler<Listening> {
             let context = ContextHandler(self.context.clone());
             let message_handler = Arc::clone(&message_handler);
             spawn(move || {
-                tcp_client_handler(client_id, context, message_handler);
+                run_client_session(client_id, context, message_handler);
             });
         }
     }
@@ -133,11 +132,11 @@ mod tcp_handlers_tests {
     use std::net::TcpListener;
     use uuid::Uuid;
 
-    use super::{Created, Listening, TcpServer, TcpServerHandler, TcpSettings};
+    use super::{Created, Listening, TcpServer, TcpServerConfiguration, TcpServerHandler};
     use crate::tcp_socket_handler::TcpHandlerError;
 
-    fn loopback_settings(port: u16) -> TcpSettings {
-        TcpSettings {
+    fn loopback_settings(port: u16) -> TcpServerConfiguration {
+        TcpServerConfiguration {
             host: "127.0.0.1".to_string(),
             port,
             max_buffer_size: 1024,
@@ -171,7 +170,7 @@ mod tcp_handlers_tests {
 
     #[test]
     fn new_with_empty_host_returns_invalid_host_failure() {
-        let settings = TcpSettings { host: "".to_string(), port: 8080, max_buffer_size: 1024 };
+        let settings = TcpServerConfiguration { host: "".to_string(), port: 8080, max_buffer_size: 1024 };
 
         let err = match TcpServer::new(settings) {
             Ok(_) => panic!("empty host should be rejected"),

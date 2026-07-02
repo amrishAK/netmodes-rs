@@ -29,4 +29,7 @@ pub enum SocketError {
 
 	#[error("failed to receive data: {0}")]
 	ReceiveData(std::io::Error),
+	
+	#[error("failed to connect socket: {0}")]
+	ConnectSocket(std::io::Error),
 }

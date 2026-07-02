@@ -16,6 +16,14 @@ pub struct TcpServerConfiguration {
     pub max_buffer_size: usize,
 }
 
+/// Configuration for an outbound TCP client connection.
+pub struct TcpClientConfiguration {
+    pub host: String,
+    pub port: u16,
+    /// Maximum buffer size for client I/O operations.
+    pub max_buffer_size: usize,
+}
+
 /// A TCP server instance with a unique ID and socket file descriptor.
 pub struct TcpServer {
     pub config: TcpServerConfiguration,
@@ -23,8 +31,14 @@ pub struct TcpServer {
     pub(crate) fd: Socket,
 }
 
+pub struct TcpPeerConnection {
+    pub id: Uuid,
+    pub(crate) fd: Socket,
+}
+
 /// A TCP client connection with a unique ID and socket file descriptor.
 pub struct TcpClient {
+    pub config: TcpClientConfiguration,
     pub id: Uuid,
     pub(crate) fd: Socket,
 }
@@ -32,7 +46,7 @@ pub struct TcpClient {
 /// Runtime context holding the server state and client registry.
 pub struct TcpContext {
     pub server_id: Uuid,
-    pub(crate) registry: ClientRegistry<Uuid, TcpClient>,
+    pub(crate) registry: ClientRegistry<Uuid, TcpPeerConnection>,
     /// Maximum buffer size for client I/O operations.
     pub max_buffer_size: usize,
 }
@@ -50,6 +64,12 @@ pub struct TcpServerHandler<State> {
     pub(crate) _state: PhantomData<State>,
 }
 
+
+pub struct TcpClientHandler<State> {
+    pub client: TcpClient,
+    pub(crate) _state: PhantomData<State>,
+}
+
 /// Handle to the TCP runtime context for managing all clients.
 ///
 /// Supports registry lookups, message broadcasting, and centralized client state.
@@ -60,12 +80,12 @@ pub struct ContextHandler(pub(crate) Arc<TcpContext>);
 ///
 /// Provides methods to send data back to the client and retrieve its ID.
 #[derive(Clone)]
-pub struct ClientHandler(pub(crate) Arc<RwLock<TcpClient>>);
+pub struct TcpClientSession(pub(crate) Arc<RwLock<TcpPeerConnection>>);
 
 /// Handler invoked when client data arrives.
 ///
 /// Receives:
-/// - `&ClientHandler`: Interface to send replies to this client
+/// - `&TcpClientSession`: Interface to send replies to this client
 /// - `ContextHandler`: Access to all clients for broadcast or registry lookups
 /// - `&[u8]`: Received data
-pub type OnMessageHandler = Arc<dyn Fn(&ClientHandler, ContextHandler, &[u8]) + Send + Sync + 'static>;
+pub type OnMessageHandler = Arc<dyn Fn(&TcpClientSession, ContextHandler, &[u8]) + Send + Sync + 'static>;

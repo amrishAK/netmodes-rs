@@ -84,6 +84,29 @@ impl TcpSocketPlatform for WindowsTcpSocket {
         Ok(client as Socket)
     }
 
+    fn connect_socket(fd: Self::Socket, host: &str, port: u16) -> Result<(), SocketError> {
+        let in_addr = crate::core::socket::helper::parse_ipv4_host(host)?;
+        let mut addr: windows_sys::Win32::Networking::WinSock::SOCKADDR_IN =
+        unsafe { std::mem::zeroed() };
+        addr.sin_family = windows_sys::Win32::Networking::WinSock::AF_INET as u16;
+        addr.sin_port = port.to_be();
+        addr.sin_addr.S_un.S_addr = in_addr;
+
+        let ret = unsafe {
+            windows_sys::Win32::Networking::WinSock::connect(
+            super::common::as_socket(fd),
+            &addr as *const _ as *const windows_sys::Win32::Networking::WinSock::SOCKADDR,
+            std::mem::size_of::<windows_sys::Win32::Networking::WinSock::SOCKADDR_IN>() as i32,
+            )
+        };
+
+        if ret == windows_sys::Win32::Networking::WinSock::SOCKET_ERROR {
+            return Err(SocketError::ConnectSocket(super::common::wsa_last_error()));
+        }
+
+        Ok(())
+    }
+
     fn close_socket(fd: Self::Socket) -> Result<(), SocketError> {
         close_ipv4_socket(fd)
     }

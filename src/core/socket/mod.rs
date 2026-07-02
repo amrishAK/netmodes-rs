@@ -51,3 +51,7 @@ pub(crate) fn send_data(fd: Socket, data: &[u8]) -> Result<usize, SocketError> {
 pub(crate) fn receive_data(fd: Socket, buffer: &mut [u8]) -> Result<usize, SocketError> {
     Platform::receive_data(fd, buffer)
 }
+
+pub(crate) fn connect_socket(fd: Socket, host: &str, port: u16) -> Result<(), SocketError> {
+    Platform::connect_socket(fd, host, port)
+}

@@ -33,3 +33,11 @@ pub struct Listening;
 /// Marker type for a server in the closed state.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Closed;
+
+/// Marker type for a TCP client that has a socket but is not connected yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Disconnected;
+
+/// Marker type for a TCP client that has an active remote connection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Connected;

@@ -1,15 +1,15 @@
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
-use crate::core::models::domain::tcp::{ContextHandler, TcpContext, TcpClient};
+use crate::core::models::domain::tcp::{ContextHandler, TcpContext, TcpPeerConnection};
 
-use super::errors::TcpHandlerError;
+use crate::tcp_socket_handler::errors::TcpHandlerError;
 
 impl ContextHandler {
     pub fn new(context: Arc<TcpContext>) -> Self {
         Self(context)
     }
 
-    pub(crate) fn get_client(&self, client_id: Uuid) -> Result<Arc<RwLock<TcpClient>>, TcpHandlerError> {
+    pub(crate) fn get_client(&self, client_id: Uuid) -> Result<Arc<RwLock<TcpPeerConnection>>, TcpHandlerError> {
         let client = self
             .0
             .registry
@@ -51,7 +51,7 @@ impl ContextHandler {
         Ok(())
     }
 
-    fn send_message(&self, client: Arc<RwLock<TcpClient>>, message: &[u8]) -> Result<(), TcpHandlerError> {
+    fn send_message(&self, client: Arc<RwLock<TcpPeerConnection>>, message: &[u8]) -> Result<(), TcpHandlerError> {
         let write_guard = client.write().map_err(|_| TcpHandlerError::ClientLockError)?;
         write_guard.write(message)?;
         Ok(())
@@ -62,7 +62,7 @@ impl ContextHandler {
 #[cfg(test)]
 mod tests {
     use super::ContextHandler;
-    use crate::core::models::domain::tcp::{TcpClient, TcpContext};
+    use crate::core::models::domain::tcp::{TcpContext, TcpPeerConnection};
     use crate::core::registry::client_registry::ClientRegistry;
     use crate::tcp_socket_handler::errors::TcpHandlerError;
     use std::io::Read;
@@ -85,7 +85,7 @@ mod tests {
         ContextHandler::new(Arc::new(context))
     }
 
-    fn connected_client_pair() -> (TcpClient, TcpStream) {
+    fn connected_client_pair() -> (TcpPeerConnection, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind loopback listener");
         let addr = listener.local_addr().expect("failed to read listener address");
 
@@ -97,7 +97,7 @@ mod tests {
         #[cfg(windows)]
         let raw_socket = server_stream.into_raw_socket();
 
-        let client = TcpClient {
+        let client = TcpPeerConnection {
             id: Uuid::new_v4(),
             fd: raw_socket,
         };

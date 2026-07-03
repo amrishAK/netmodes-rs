@@ -100,8 +100,10 @@ Use these to build custom routing logic without directly managing socket descrip
 Example targeted message:
 
 ```rust
-fn send_private_message(context: ContextHandler, to_client: &str, payload: &[u8]) {
-    let _ = context.send_message_to_client(to_client.to_string(), payload);
+use uuid::Uuid;
+
+fn send_private_message(context: ContextHandler, to_client: Uuid, payload: &[u8]) {
+    let _ = context.send_message_to_client(to_client, payload);
 }
 ```
 

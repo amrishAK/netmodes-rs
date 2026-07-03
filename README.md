@@ -1,30 +1,52 @@
 # thugal-net
 
-`thugal-net` is a Rust networking crate focused on TCP server/client workflows with compile-time lifecycle safety.
+`thugal-net` is a Rust networking crate for transport-layer (L4) server/client flows.
+
+It focuses on:
+
+- Strong lifecycle flow with typestate transitions.
+- Explicit connection handling.
+- Callback-based message handling.
+- Shared TCP socket abstractions for Unix and Windows.
+
+The current stable path is TCP. The end-goal target for this project is documented in [docs/requirement.md](docs/requirement.md): a layered transport framework with a poller-based core and protocol extension points.
 
 ## Current Scope
 
-- Implemented: TCP server and TCP client handlers with type-state transitions.
-- Implemented: callback-driven message handling and client registry context.
-- Implemented: cross-platform socket layer for Unix and Windows targets.
-- Not yet implemented: UDP handler API (current module is a placeholder).
+Available now:
+
+- TCP server and TCP client handler APIs with typestate lifecycle transitions.
+- Message callback flow through `OnMessageHandler`, `TcpClientSession`, and `ContextHandler`.
+- Registry-backed context helpers for routing and broadcast-style messaging.
+- Cross-platform TCP socket abstractions (Unix and Windows).
+
+In progress:
+
+- Poller-driven runtime foundation (`epoll`/`kqueue`/`WSAPoll`).
+- Expanded lifecycle hooks (`on_connect`, `on_message`, `on_disconnect`).
+- Protocol codec/adapter extension points for custom L7 framing.
+
+Not yet in stable public API:
+
+- Production-ready UDP server/client handler APIs.
+- First-class session registry API from the requirements document.
 
 ## Install
 
-Add this to `Cargo.toml`:
+Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
 thugal-net = "0.1.0"
 ```
 
-Import from Rust code:
+Use in code:
 
 ```rust
 use thugal_net::tcp_socket_handler::*;
 ```
 
-If you prefer `thugal::net` style imports, alias the package in `Cargo.toml`:
+If you prefer `thugal::net` style imports, alias the package:
 
 ```toml
 [dependencies]
@@ -37,23 +59,24 @@ use thugal::net::tcp_socket_handler::*;
 
 ## Quick Start
 
-Use the shortest end-to-end path in [doc/getting-started.md](doc/getting-started.md).
+Follow [doc/getting-started.md](doc/getting-started.md) for a minimal TCP round-trip example.
 
-If you are working inside this repository, you can run the sample server binary:
+Inside this repository, run the sample server:
 
 ```bash
 cargo run -p server-module
 ```
 
-The sample server package is isolated under `example/server_module` with its own `Cargo.toml`.
+The sample server package is in `example/server_module`.
 
 ## Documentation
 
-- [doc/getting-started.md](doc/getting-started.md): first TCP round-trip (server + client).
-- [doc/package-usage.md](doc/package-usage.md): practical usage patterns and lifecycle rules.
-- [doc/api-overview.md](doc/api-overview.md): public API surface summary.
+- [docs/requirement.md](docs/requirement.md): roadmap, requirements, and phased scope.
+- [doc/getting-started.md](doc/getting-started.md): first TCP server/client round-trip.
+- [doc/package-usage.md](doc/package-usage.md): usage patterns and lifecycle rules.
+- [doc/api-overview.md](doc/api-overview.md): public API summary.
 - [doc/architecture.md](doc/architecture.md): module boundaries and runtime flow.
-- [doc/error-handling.md](doc/error-handling.md): error model and handling strategies.
+- [doc/error-handling.md](doc/error-handling.md): error model and handling approach.
 
 ## Testing
 
@@ -63,13 +86,13 @@ Run all tests:
 cargo test
 ```
 
-Run unit tests and binary tests:
+Run unit and binary tests (cargo alias):
 
 ```bash
 cargo test-unit
 ```
 
-Run integration tests:
+Run integration tests (cargo alias):
 
 ```bash
 cargo test-integration

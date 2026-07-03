@@ -1,5 +1,7 @@
 # thugal-net Requirements
 
+This document defines the end-goal target architecture and capabilities for this project. Items here are target outcomes and may not all be implemented in the current release.
+
 ## 1. Product Direction
 
 ### 1.1 Purpose
@@ -285,7 +287,7 @@ Callback constraints:
 
 ## 8. Success Criteria
 
-The package is considered successful for this phase when:
+The package is considered successful for the end-goal release when:
 
 1. Product clarity
    - Requirements and docs position thugal-net as a reusable package, not a learning exercise.
@@ -366,11 +368,11 @@ The package is considered successful for this phase when:
 
 **Important:** Async support is **not part of this package.** Instead, separate wrapper crates provide ergonomic async/await APIs:
 
-- **`netmodes-tokio`** (or similar): Wraps `thugal-net` for Tokio runtime users.
+- **`thugal-net-tokio`** (or similar): Wraps `thugal-net` for Tokio runtime users.
   - Provides `async fn accept()`, `recv()`, `send()`.
   - Spawns reactor in background thread, bridges callbacks to async tasks via channels.
 
-- **`netmodes-async-std`** (or similar): Wraps `thugal-net` for async-std users.
+- **`thugal-net-async-std`** (or similar): Wraps `thugal-net` for async-std users.
   - Same pattern: async wrapper over sync reactor.
 
 **Design Principle:**
@@ -390,7 +392,7 @@ The package is considered successful for this phase when:
   - Clarified callback model: synchronous, reactor-thread execution.
   - Separated client registry (framework-owned) from session store (user-owned).
   - Defined L4 transport differences (TCP vs. UDP).
-  - Moved async to Phase 4 as separate optional wrapper crates (netmodes-tokio, netmodes-async-std).
+  - Moved async to Phase 4 as separate optional wrapper crates (thugal-net-tokio, thugal-net-async-std).
 
 - v2.0 - Package-focused rewrite.
   - Repositioned project as reusable package for external users.

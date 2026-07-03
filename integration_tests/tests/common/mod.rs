@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use netmodes_rs::core::models::domain::tcp::{ContextHandler, OnMessageHandler, TcpClientSession};
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::core::models::domain::tcp::{ContextHandler, OnMessageHandler, TcpClientSession};
+use thugal_net::tcp_socket_handler::{
     Disconnected,
     TcpClientConfiguration,
     TcpClientHandler,

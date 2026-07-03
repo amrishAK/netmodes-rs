@@ -1,10 +1,10 @@
-# netmodes-rs Requirements
+# thugal-net Requirements
 
 ## 1. Product Direction
 
 ### 1.1 Purpose
 
-netmodes-rs is a lightweight, event-driven L4 (transport) server framework for Rust, designed for native nonblocking I/O and pluggable L7 (application) protocol support.
+thugal-net is a lightweight, event-driven L4 (transport) server framework for Rust, designed for native nonblocking I/O and pluggable L7 (application) protocol support.
 
 Primary focus:
 
@@ -288,7 +288,7 @@ Callback constraints:
 The package is considered successful for this phase when:
 
 1. Product clarity
-   - Requirements and docs position netmodes-rs as a reusable package, not a learning exercise.
+   - Requirements and docs position thugal-net as a reusable package, not a learning exercise.
 
 2. Three-layer architecture enforcement
    - Clear separation exists between platform core, handler layer, and user API layer.
@@ -366,11 +366,11 @@ The package is considered successful for this phase when:
 
 **Important:** Async support is **not part of this package.** Instead, separate wrapper crates provide ergonomic async/await APIs:
 
-- **`netmodes-tokio`** (or similar): Wraps `netmodes-rs` for Tokio runtime users.
+- **`netmodes-tokio`** (or similar): Wraps `thugal-net` for Tokio runtime users.
   - Provides `async fn accept()`, `recv()`, `send()`.
   - Spawns reactor in background thread, bridges callbacks to async tasks via channels.
 
-- **`netmodes-async-std`** (or similar): Wraps `netmodes-rs` for async-std users.
+- **`netmodes-async-std`** (or similar): Wraps `thugal-net` for async-std users.
   - Same pattern: async wrapper over sync reactor.
 
 **Design Principle:**

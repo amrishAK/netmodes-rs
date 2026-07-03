@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide gets you to a first successful TCP request/response with `netmodes-rs`.
+This guide gets you to a first successful TCP request/response with `thugal-net`.
 
 ## Prerequisites
 
@@ -14,14 +14,14 @@ If you are consuming from crates.io:
 
 ```toml
 [dependencies]
-netmodes-rs = "0.1.0"
+thugal-net = "0.1.0"
 ```
 
 If you are developing against a local checkout:
 
 ```toml
 [dependencies]
-netmodes-rs = { path = "../netmodes-rs" }
+thugal-net = { path = "../thugal-net" }
 ```
 
 ## 2. Start a minimal echo server
@@ -29,12 +29,12 @@ netmodes-rs = { path = "../netmodes-rs" }
 ```rust
 use std::sync::Arc;
 
-use netmodes_rs::core::models::domain::tcp::{
+use thugal_net::core::models::domain::tcp::{
     ContextHandler,
     OnMessageHandler,
     TcpClientSession,
 };
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::tcp_socket_handler::{
     TcpServer,
     TcpServerConfiguration,
 };
@@ -71,7 +71,7 @@ cargo run --bin server
 ## 3. Connect and send from a client
 
 ```rust
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::tcp_socket_handler::{
     Disconnected,
     TcpClientConfiguration,
     TcpClientHandler,

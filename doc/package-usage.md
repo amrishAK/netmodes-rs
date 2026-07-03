@@ -9,12 +9,12 @@ Most applications only need symbols from `tcp_socket_handler` and callback types
 ```rust
 use std::sync::Arc;
 
-use netmodes_rs::core::models::domain::tcp::{
+use thugal_net::core::models::domain::tcp::{
     ContextHandler,
     OnMessageHandler,
     TcpClientSession,
 };
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::tcp_socket_handler::{
     Connected,
     Disconnected,
     TcpClientConfiguration,
@@ -66,7 +66,7 @@ Use `OnMessageHandler` for all inbound payload handling. The callback receives:
 
 ```rust
 use std::sync::Arc;
-use netmodes_rs::core::models::domain::tcp::{
+use thugal_net::core::models::domain::tcp::{
     ContextHandler,
     OnMessageHandler,
     TcpClientSession,

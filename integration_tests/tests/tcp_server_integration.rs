@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use netmodes_rs::core::socket::SocketError;
-use netmodes_rs::core::models::domain::tcp::{ContextHandler, OnMessageHandler, TcpClientSession};
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::core::socket::SocketError;
+use thugal_net::core::models::domain::tcp::{ContextHandler, OnMessageHandler, TcpClientSession};
+use thugal_net::tcp_socket_handler::{
     Disconnected,
     TcpClientConfiguration,
     TcpClientHandler,

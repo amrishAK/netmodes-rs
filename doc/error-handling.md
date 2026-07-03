@@ -1,6 +1,6 @@
 # Error Handling
 
-`netmodes-rs` exposes two primary error layers so you can decide whether to recover, retry, or fail fast.
+`thugal-net` exposes two primary error layers so you can decide whether to recover, retry, or fail fast.
 
 ## Error Layers
 

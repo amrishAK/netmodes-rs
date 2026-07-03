@@ -1,13 +1,13 @@
 # API Overview
 
-This document summarizes the current public API surface of `netmodes-rs`.
+This document summarizes the current public API surface of `thugal-net`.
 
 ## Crate Exports
 
 Top-level crate modules:
 
-- `netmodes_rs::core`
-- `netmodes_rs::tcp_socket_handler`
+- `thugal_net::core`
+- `thugal_net::tcp_socket_handler`
 
 Current status:
 
@@ -18,7 +18,7 @@ Current status:
 Main import path:
 
 ```rust
-use netmodes_rs::tcp_socket_handler::*;
+use thugal_net::tcp_socket_handler::*;
 ```
 
 Key exported types:
@@ -77,7 +77,7 @@ Additional client handler methods:
 
 ## Callback and Context Types
 
-Callback-related domain types are defined in `netmodes_rs::core::models::domain::tcp`.
+Callback-related domain types are defined in `thugal_net::core::models::domain::tcp`.
 
 - `OnMessageHandler`
 - `TcpClientSession`
@@ -96,7 +96,7 @@ Callback intent:
 
 ## Registry Surface
 
-Registry modules are available under `netmodes_rs::core::registry`.
+Registry modules are available under `thugal_net::core::registry`.
 
 - `client_registry::ClientRegistry<Key, T>`
 - `register_error::RegistryError`
@@ -111,6 +111,6 @@ Top-level TCP errors:
 - `PartialWrite`, `ConnectionClosed`
 - `Socket(SocketError)`
 
-Low-level socket errors are represented by `netmodes_rs::core::socket::SocketError`.
+Low-level socket errors are represented by `thugal_net::core::socket::SocketError`.
 
 For handling patterns and examples, see [error-handling.md](error-handling.md).

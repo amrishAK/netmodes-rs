@@ -3,7 +3,7 @@ mod common;
 use std::thread;
 use std::time::Duration;
 
-use netmodes_rs::tcp_socket_handler::{
+use thugal_net::tcp_socket_handler::{
     Disconnected,
     TcpClientConfiguration,
     TcpClientHandler,

@@ -1,6 +1,6 @@
-# netmodes-rs
+# thugal-net
 
-`netmodes-rs` is a Rust networking crate focused on TCP server/client workflows with compile-time lifecycle safety.
+`thugal-net` is a Rust networking crate focused on TCP server/client workflows with compile-time lifecycle safety.
 
 ## Current Scope
 
@@ -15,13 +15,24 @@ Add this to `Cargo.toml`:
 
 ```toml
 [dependencies]
-netmodes-rs = "0.1.0"
+thugal-net = "0.1.0"
 ```
 
 Import from Rust code:
 
 ```rust
-use netmodes_rs::tcp_socket_handler::*;
+use thugal_net::tcp_socket_handler::*;
+```
+
+If you prefer `thugal::net` style imports, alias the package in `Cargo.toml`:
+
+```toml
+[dependencies]
+thugal = { package = "thugal-net", version = "0.1.0" }
+```
+
+```rust
+use thugal::net::tcp_socket_handler::*;
 ```
 
 ## Quick Start

@@ -1,409 +1,411 @@
 # netmodes-rs Requirements
 
-## 1. Purpose and Goals
+## 1. Product Direction
 
 ### 1.1 Purpose
 
-`netmodes-rs` is a learning project to understand Rust networking, socket APIs, and async runtime internals. The project implements:
+netmodes-rs is a lightweight, event-driven L4 (transport) server framework for Rust, designed for native nonblocking I/O and pluggable L7 (application) protocol support.
 
-- A single server node that supports multiple clients.
-- Multiple network message modes:
-  - TCP and UDP
-  - Unicast, broadcast, multicast
-  - Pub-sub (publish/subscribe)
-- Optional cluster mode for experimentation.
-- A thin CLI client to send messages in different modes.
+Primary focus:
 
-The project is **not** a full-scale load balancer. That is a separate project (Thendra).
+- Provide a stable, ergonomic L4 foundation using `epoll` on Linux and equivalent platform abstractions on Windows.
+- Expose low-level control where needed while keeping high-level usage simple.
+- Support pluggable L7 protocol handlers via trait-based codec system.
+- Remain lightweight and sync-first: no embedded async runtime, no fixed dependency on Tokio.
+- Support cross-platform behavior through well-defined abstractions.
 
-### 1.2 Primary Goals
+### 1.2 Product Goals
 
-- Learn and practice:
-  - Low-level socket programming in Rust (`std::net`, `socket2`).
-  - Non-blocking I/O and event loops.
-  - Building a custom async runtime that supports `async`/`await`.
-  - TCP and UDP communication patterns.
-  - Broadcast and multicast socket configuration.
-  - Basic pub-sub message routing.
-- Build a small, ergonomic network library and CLI for experimentation.
+- Build a package-first API for TCP and UDP workflows.
+- Keep a strict layered architecture:
+  - Layer 1: low-level platform-specific socket and polling primitives.
+  - Layer 2: mid-level transport handlers and lifecycle orchestration.
+  - Layer 3: high-level user API and callbacks.
+- Support custom binary protocol integration via codec interfaces.
+- Keep pub-sub out of the L4 core and provide it as a separate L7 package/plugin.
+- Support session management as a first-class capability.
+- Provide lifecycle hooks for connection events:
+  - on_connect
+  - on_disconnect
+  - on_message
 
 ### 1.3 Non-Goals
 
-- Not a production-grade load balancer.
-- Not a general-purpose async runtime (like Tokio).
-- Not a full message broker with durability, queues, or complex protocols.
-- Not focused on security, authentication, or encryption (can be added later as exercises).
+- This project is not a load balancer.
+- This project is not a full message broker with persistence and durability.
+- This project is not tied to learning outcomes as primary scope.
 
 ---
 
-## 2. Functional Requirements
+## 2. Architecture Requirements
 
-### 2.1 Network Modes
+### 2.1 Layer 1: Low-Level Platform-Specific Core
 
-The system must support the following network modes:
+Responsibilities:
 
-| Mode        | Protocol | Description                                         |
-|-------------|----------|-----------------------------------------------------|
-| echo        | TCP/UDP  | Server echoes back received messages to the client. |
-| unicast     | UDP      | Server sends messages to a single client address.   |
-| broadcast   | UDP      | Server sends messages to all clients on the LAN.    |
-| multicast   | UDP      | Server sends messages to a multicast group.         |
-| pub         | TCP/UDP  | Client publishes a message to a topic.              |
-| sub         | TCP/UDP  | Client subscribes to a topic and receives messages. |
+- Native socket creation, bind/listen/accept/connect, send/recv, close.
+- Platform-specific behavior isolated behind a common trait/API.
+- Polling/event primitives for readiness notification.
 
-The server must:
+Target requirements:
 
-- Accept connections/messages from multiple clients concurrently.
-- Route messages based on mode and topic (for pub-sub).
-- Support both TCP and UDP for echo and pub-sub.
-- Support UDP for unicast, broadcast, and multicast.
+- Poller abstraction with platform backends:
+  - Linux: epoll
+  - macOS: kqueue
+  - Windows: WSAPoll
+- Non-blocking socket configuration as default for poll-driven flows.
+- Readiness registration API (register, modify, unregister, wait).
+- Cross-platform TCP socket wrapper for Unix and Windows.
+- Unified TCP socket abstraction exposed through core socket modules.
+- Centralized error mapping through SocketError.
 
-### 2.2 Server (node)
+### 2.2 Layer 2: Mid-Level Handler Layer
 
-The `node` binary must:
+Responsibilities:
 
-- Listen on configurable TCP and UDP ports.
-- Maintain in-memory subscription state for pub-sub:
-  - `topic -> Vec<client>` mappings.
-- Implement message routing:
-  - For echo: send back the same message.
-  - For unicast: send to a specific client address.
-  - For broadcast: send to a broadcast address.
-  - For multicast: send to a multicast group address.
-  - For pub-sub: forward messages to all subscribers of a topic.
-- Support cluster mode:
-  - Multiple server instances with redundancy.
-  - Connect to peer nodes.
-  - Forward messages to peers with duplicate prevention (message ID or TTL).
-  - Maintain client states across replicas so that if one server goes down, clients can reconnect to another replica.
+- Server/client lifecycle orchestration.
+- Connection session management.
+- Event dispatch from low-level events into user callbacks.
+- Protocol decode/encode pipeline integration.
+- Client and session state coordination.
 
-### 2.3 Thin CLI Client (thin-cli)
+Target requirements:
 
-The `thin-cli` binary must:
+- Dedicated on_connect and on_disconnect callbacks in the server API.
+- Handler execution model integrated with poller-based event loop.
+- Mid-level protocol adapter wiring for custom protocol codecs.
+- First-class session registry wiring in server and context flows.
+- TCP server typestate flow:
+  - Created -> Listening
+- TCP client typestate flow:
+  - Disconnected -> Connected
+- Session loop with message callback invocation.
+- Shared context handler and client registry.
 
-- Provide subcommands or flags for modes:
-  - `echo`, `unicast`, `broadcast`, `multicast`, `pub`, `sub`.
-- Support protocol selection:
-  - `--proto tcp` or `--proto udp`.
-- Support target configuration:
-  - `--addr` for server address.
-  - `--topic` for pub-sub topics.
-  - `--bcast` for broadcast address.
-  - `--maddr` for multicast address.
-- Allow users to:
-  - Send messages from stdin or command-line arguments.
-  - Receive and print messages from the server.
+### 2.3 Layer 3: High-Level User API
 
-Example usage:
+Responsibilities:
 
-```bash
-thin-cli echo --proto udp --addr 127.0.0.1:9000
-thin-cli unicast --proto udp --addr 192.168.1.10:9000
-thin-cli broadcast --proto udp --bcast 192.168.1.255:9000
-thin-cli multicast --proto udp --maddr 239.0.0.1:9000
-thin-cli pub --proto tcp --topic chat --addr 127.0.0.1:9100
-thin-cli sub --proto tcp --topic chat --addr 127.0.0.1:9100
-```
+- Ergonomic package API for application developers.
+- Clear configuration structs/builders.
+- Stable callback contracts and error behavior.
 
-### 2.4 Message Format
+Target requirements:
 
-The system must use a **binary message format** with a basic protocol:
-
-```
-<cmd> <option> <message>
-```
-
-Where:
-
-- `cmd`: 1-byte command code (e.g., `0x01` = SUB, `0x02` = PUB, `0x03` = ECHO, etc.).
-- `option`: 1–4 bytes of optional flags or metadata (e.g., topic length, QoS, TTL).
-- `message`: variable-length payload (e.g., topic name, message content).
-
-The exact binary protocol details (cmd codes, option layout, length encoding) will be **designed later** during implementation. This section defines the high-level structure only.
-
-The format must be:
-
-- Compact and efficient for network transport.
-- Easy to parse with minimal overhead.
-- Extensible for future features (new cmds, options).
-
-### 2.5 Pub-Sub Protocol
-
-#### Core: Queue-Based Pub-Sub
-
-The primary pub-sub protocol must be queue-based:
-
-- Simple in-memory routing: `topic -> Vec<Sender<Message>>`.
-- Binary protocol:
-  - `cmd = 0x01` – SUBSCRIBE `<topic>`
-  - `cmd = 0x02` – UNSUBSCRIBE `<topic>`
-  - `cmd = 0x03` – PUBLISH `<topic> <payload>`
-- Server forwards messages immediately to all subscribers of a topic.
-- No persistence, no QoS, no wildcards.
-
-#### Extension: MQTT Pub-Sub (Optional)
-
-The server may optionally support MQTT-based pub-sub as an extension:
-
-- MQTT runs on a **separate TCP port** (e.g., `9183`).
-- Queue-based pub-sub is the primary protocol.
-- MQTT is optional, not required for core learning goals.
-- Queue-based and MQTT pub-sub maintain **separate topic state** (isolated):
-  - Subscriptions are not shared between queue-based and MQTT.
-  - Topic routing is independent per protocol.
-- MQTT support includes:
-  - Basic CONNECT, SUBSCRIBE, UNSUBSCRIBE, PUBLISH, DISCONNECT.
-  - No QoS 2, no complex session state, no retain flags initially.
-
-Protocols are clearly separated by port:
-
-- Default port (e.g., `9100`) → queue-based pub-sub (binary protocol).
-- MQTT port (e.g., `9183`) → MQTT-based pub-sub (binary protocol).
+- First-class event hook registration for on_connect and on_disconnect.
+- Protocol selection/codec configuration in public server and client configuration.
+- End-user examples for default protocol and custom protocol integration.
+- Public API for user-defined session models and session lifecycle management.
+- Public TCP server and TCP client APIs.
+- Stable message callback contract consumed by server flows.
 
 ---
 
-## 3. Technical Requirements
+## 3. Functional Requirements
 
-### 3.1 Core Constraint: Pure Sockets + Custom Async Runtime
+### 3.1 Core Scope Targets
 
-The project must:
+- TCP server lifecycle and run loop.
+- TCP client connect/send/receive flow.
+- Registry-backed connection context and broadcast helper.
+- Cross-platform TCP socket operations for Unix and Windows.
+- UDP handler public API as a stable core surface (server and client handlers).
+- Pub-sub is intentionally outside core scope and will be delivered as an L7 package.
 
-- Use only:
-  - `std::net` sockets and/or `socket2` for low-level socket operations.
-  - A custom, manually implemented async runtime.
-- Not use:
-  - Tokio's runtime, or any equivalent high-level async runtime (e.g., `async-std`, `smol` runtime) for network I/O.
-- Support:
-  - `async`/`await` syntax via the custom runtime as a wrapper around futures.
-- Implement:
-  - Non-blocking sockets.
-  - A **single event loop** that handles both TCP and UDP.
-  - A polling mechanism:
-    - `epoll` on Linux.
-    - `kqueue` on macOS.
-    - `WSAPoll` on Windows.
-    - (Optional) `io_uring` on Linux as an advanced option.
-  - A task/spawner model and waker mechanism to drive futures.
-  - Async helpers for:
-    - TCP accept/read/write.
-    - UDP recv/send (including broadcast/multicast).
-    - Optional timers for timeouts.
+### 3.2 Expanded Capability Targets
 
-The runtime must be **minimal and specific to netmodes-rs**, not a general-purpose async library.
+- TCP as a stable core API.
+- Poller-backed event loop foundations with epoll/kqueue/WSAPoll.
+- Custom protocol support:
+  - Protocol frame abstraction.
+  - Codec trait(s) for decode/encode.
+  - Default built-in codec for basic framing.
+- Lifecycle hooks:
+  - on_connect(client, context) when a client session is accepted and registered.
+  - on_disconnect(client, context, reason) when a client session closes or is removed.
+  - on_message(client, context, payload) for inbound payload handling.
+- Session management support:
+  - Session registry for user-defined session types.
+  - Session create/update/remove flows attached to connection lifecycle.
+  - Session lookup APIs for handler and application usage.
 
-### 3.2 Platform-Specific Polling Code
+### 3.3 Deferred Scope
 
-Platform-specific polling code must be handled using a **wrapper crate implemented from scratch**:
+- Broadcast and multicast behavior.
+- Cluster mode and peer replication.
+- MQTT extension.
+- Built-in pub-sub implementation in this crate (moved to separate L7 package/plugin).
 
-- Create your own small wrapper crate that:
-  - Exposes a unified polling API (e.g., `Poller::new()`, `Poller::wait()`, `Poller::register()`).
-  - Internally uses:
-    - `epoll` on Linux.
-    - `kqueue` on macOS.
-    - `WSAPoll` on Windows.
-- Use conditional compilation (`#[cfg(target_os = "...")]`) inside the wrapper crate only.
-- The rest of the codebase uses the unified API without platform-specific code.
-- Do not use an existing third-party polling crate; implement it yourself for learning.
-
-This keeps the main codebase clean and portable while isolating platform differences, and ensures you understand how polling mechanisms work.
-
-### 3.3 Cluster Mode: Redundancy
-
-Cluster mode must provide **multiple servers with basic redundancy and client state maintenance**:
-
-- Multiple `node` instances can run on different hosts/ports.
-- Nodes:
-  - Connect to peer nodes.
-  - Forward messages to peers with duplicate prevention (message ID or TTL).
-  - Maintain client states across replicas:
-    - If one server goes down, clients can reconnect to another replica.
-    - Replicas share or replicate client subscription state.
-- Redundancy is **basic**:
-  - No complex consensus or leader election.
-  - No persistent storage or durable queues.
-  - Simple peer list configuration (e.g., `peers = [...]`).
-  - Peer heartbeats and failure detection will be detailed later during implementation.
-  - Initial implementation can use simple timeouts and periodic heartbeats.
-
-This is "enough for fun" and learning, not production-grade clustering.
-
-### 3.4 Allowed Dependencies
-
-Allowed crates:
-
-- `socket2` – for low-level socket configuration.
-- `futures` – for `Future` trait, `FutureExt`, and basic utilities (optional).
-- `clap` – for CLI parsing.
-- `log` + `env_logger` – for logging.
-- Standard library (`std`) only for non-async core logic.
-
-Not allowed for core I/O:
-
-- Tokio runtime (`tokio::main`, `tokio::spawn`, etc.).
-- `async-std` runtime.
-- `smol` runtime.
-- High-level HTTP frameworks as the primary network abstraction.
-- Third-party polling crates (you must implement the polling wrapper crate yourself).
-
-### 3.5 Platform Support
-
-The system must:
-
-- Run on Linux, macOS, and Windows.
-- Use appropriate polling mechanisms per platform via your own wrapper crate:
-  - Linux: `epoll`.
-  - macOS: `kqueue`.
-  - Windows: `WSAPoll`.
-
-Broadcast and multicast support must:
-
-- Use standard socket options (`set_broadcast`, `join_multicast_v4/v6`).
-- Be documented with notes on LAN requirements and OS differences.
-
-### 3.6 Async Runtime Requirements
-
-The custom async runtime must:
-
-- Provide:
-  - `Runtime::spawn(future)` to schedule a future.
-  - `Runtime::run()` to drive the event loop.
-- Implement:
-  - A task queue or ready list.
-  - A waker mechanism to mark tasks as ready when socket events occur.
-  - Mapping between socket events and tasks.
-  - A **single event loop** for both TCP and UDP.
-- Expose async-like APIs:
-  - `TcpListener::accept().await`
-  - `TcpStream::read().await`, `TcpStream::write().await`
-  - `UdpSocket::recv().await`, `UdpSocket::send().await`
-
-These APIs must be implemented against the custom runtime, not Tokio.
+Deferred items are not removed from long-term roadmap, but they are not blocking for the package-focused core release.
 
 ---
 
-## 4. Interface Requirements
+## 4. Technical Requirements
 
-### 4.1 CLI Interface
+### 4.1 Dependency and Runtime Constraints
 
-The `thin-cli` must provide:
+- Use standard Rust plus low-level socket crates as needed.
+- Do not require Tokio runtime for core network I/O.
+- Keep platform-specific code isolated behind core abstraction boundaries.
 
-- A subcommand-based interface:
-  - `thin-cli echo ...`
-  - `thin-cli unicast ...`
-  - `thin-cli broadcast ...`
-  - `thin-cli multicast ...`
-  - `thin-cli pub ...`
-  - `thin-cli sub ...`
-- Common flags:
-  - `--proto tcp|udp`
-  - `--addr <host:port>`
-  - `--topic <name>`
-  - `--bcast <host:port>`
-  - `--maddr <host:port>`
-  - `--help`
+### 4.2 Polling Abstraction
 
-### 4.2 Server Configuration
+The codebase must introduce an internal poller module with a unified API, for example:
 
-The `node` must support:
+- Poller::new()
+- Poller::register(fd, interest)
+- Poller::modify(fd, interest)
+- Poller::unregister(fd)
+- Poller::wait(timeout)
 
-- A configuration file or CLI args for:
-  - TCP port (queue-based pub-sub).
-  - UDP port.
-  - MQTT TCP port (optional).
-  - Broadcast address (optional).
-  - Multicast group address (optional).
-  - Peer addresses for cluster mode.
+Platform mapping:
 
-Example config (TOML or JSON):
+- Linux: epoll backend.
+- macOS: kqueue backend.
+- Windows: WSAPoll backend.
 
-```toml
-tcp_port = 9100
-udp_port = 9000
-mqtt_port = 9183
-broadcast_addr = "192.168.1.255:9000"
-multicast_addr = "239.0.0.1:9000"
-peers = ["192.168.1.10:9100", "192.168.1.11:9100"]
-```
+### 4.3 Protocol Abstraction
 
----
+The package must support pluggable protocol implementations:
 
-## 5. Success Criteria
+- Frame-level data model for decoded payloads and metadata.
+- Codec interface for decode and encode.
+- Clear error propagation for malformed frames.
+- Ability to plug a user-defined codec per handler/server configuration.
+- Pub-sub protocol primitives are out of core scope and belong to separate L7 packages/plugins.
 
-The project is considered complete for learning when:
+### 4.4 Lifecycle Hook Contract
 
-1. **Core networking**
-   - The node:
-     - Accepts TCP and UDP connections.
-     - Implements echo, unicast, broadcast, multicast.
-     - Implements queue-based pub-sub with topic-based routing.
-   - The thin-cli:
-     - Can send and receive messages in all modes.
-     - Supports both TCP and UDP for echo and pub-sub.
-   - Binary message format with `<cmd> <option> <message>` is implemented.
+Server-side handler contract must include:
 
-2. **Custom async runtime**
-   - The async runtime:
-     - Uses non-blocking sockets.
-     - Implements a **single event loop** with `epoll`/`kqueue`/`WSAPoll` via your own wrapper crate.
-     - Spawns and drives futures without Tokio runtime.
-     - Provides async `accept`, `read`, `write`, `recv`, `send` APIs.
+- on_connect(client, context)
+- on_message(client, context, payload)
+- on_disconnect(client, context, reason)
 
-3. **Cluster mode (optional)**
-   - If implemented:
-     - Multiple `node` instances run with basic redundancy.
-     - Nodes forward messages to peers with duplicate prevention.
-     - Client states are maintained across replicas.
-     - Clients can reconnect to another replica if one server goes down.
-     - No complex consensus or leader election.
-     - Peer heartbeats and failure detection are simple (to be detailed later).
+Hooks must be safe to call from concurrent session handling paths and must not leak low-level platform details.
 
-4. **MQTT extension (optional)**
-   - If implemented:
-     - MQTT runs on a separate port.
-     - Basic CONNECT, SUBSCRIBE, UNSUBSCRIBE, PUBLISH work.
-     - Queue-based and MQTT pub-sub maintain **separate topic state** (isolated).
+Context contract:
 
-5. **Learning outcomes**
-   - You understand:
-     - How sockets and non-blocking I/O work.
-     - How event loops and polling mechanisms operate.
-     - How async runtimes manage tasks and wake futures.
-     - How TCP and UDP differ in behavior and API usage.
-     - How broadcast and multicast are configured and used.
-     - How pub-sub routing is implemented at a basic level.
-     - How basic cluster redundancy with client state maintenance works.
-     - How polling mechanisms (epoll/kqueue/WSAPoll) work by implementing your own wrapper.
+- Context exposes the client registry and the session registry.
+- For TCP, session registry support is first-class.
+- For UDP, session registry support is optional and protocol-dependent.
 
-6. **Code quality**
-   - Code is:
-     - Modular and documented.
-     - Easy to extend (e.g., add new modes, MQTT, or cluster features).
-     - Testable with unit tests for core logic.
-   - Platform-specific code is isolated in your own wrapper crate.
+### 4.5 Session Registry Contract
+
+The package must expose a session registry that allows user-defined session models.
+
+Required behavior:
+
+- Users define session structs and their session IDs.
+- Registry supports add, get, contains, remove, list IDs, snapshot, clear.
+- Registry uses thread-safe access suitable for concurrent handlers.
+- Session registry API naming is session-oriented and separate from client registry.
+
+Integration requirements:
+
+- Session lifecycle can be hooked from on_connect/on_disconnect.
+- Context layer can access both client and session registries.
+- Session IDs and client IDs can be mapped by user logic when needed.
 
 ---
 
-## 6. Open Questions
+## 5. Client Registry, Session Store, and Context
 
-These can be decided during implementation:
+### 5.1 Client Registry
 
-- Exact binary protocol details (cmd codes, option layout, length encoding) – to be designed later.
-- Peer heartbeat interval and failure detection timeout – to be detailed later.
-- How client states are replicated across peers (simple vs more robust).
-- How deep MQTT support should go (basic vs more features).
+- Internal map of active client connections: `client_id -> client_metadata`.
+- Metadata: remote address, protocol handler, etc.
+- Minimal, read-only after connection acceptance.
+- Used internally by the framework for connection tracking.
+
+### 5.2 Session Store
+
+- Per-connection application state (user-defined).
+- Optional: some L7 protocols need it; others don't.
+- Attached to connection context.
+- Users define the session struct; registry provides get/set/remove operations.
+
+### 5.3 Relationship: Client Registry vs. Session Store
+
+- **Client registry:** Framework-owned, immutable metadata. Managed by the L4 core.
+- **Session store:** User-owned, mutable application state. Managed by L7 protocol handlers or user callbacks.
+- **Both accessible in callbacks via connection context.**
+
+## 6. API and Interface Requirements
+
+### 6.1 Public Package API
+
+- Preserve typestate safety for server/client lifecycle transitions.
+- Expose clear configuration objects for host/port/buffer/protocol/hook registration.
+- Keep breaking changes explicit and versioned.
+
+### 6.2 Examples and Documentation
+
+- Provide minimal TCP echo example.
+- Provide lifecycle hooks example.
+- Provide custom codec example.
+- Provide session registry example with a user-defined session struct.
+- Document thread-safety and callback execution behavior.
 
 ---
 
-## 7. Revision History
+## 7. Callbacks and Synchronous Execution Model
 
-- v1.0 – Initial requirements for `netmodes-rs`.
-  - Goals: learning networking and async runtime internals.
-  - Core constraint: pure sockets + custom async runtime, no Tokio runtime for I/O.
-  - Modes: echo, unicast, broadcast, multicast, pub, sub.
-  - Optional cluster mode with redundancy and client state maintenance.
-  - Queue-based pub-sub as primary protocol.
-  - MQTT as optional extension on a separate port (isolated topic state).
-  - Binary message format: `<cmd> <option> <message>` (details designed later).
-  - Single runtime for TCP and UDP.
-  - Platform-specific polling via your own wrapper crate (from scratch).
-  - Cluster mode: multiple servers with basic redundancy, client states replicated, heartbeats detailed later.
+### 7.1 Callback Lifecycle Hooks
+
+- `on_connect(client, context)`
+- `on_message(client, context, message_bytes)` (TCP)
+- `on_datagram(client, context, message_bytes)` (UDP)
+- `on_disconnect(client, context, reason)`
+
+### 7.2 Synchronous Callback Guarantee
+
+- TCP/UDP event processing is poller-driven (epoll/kqueue/WSAPoll).
+- Callbacks execute synchronously from the poll/event loop path.
+- Framework-managed thread-per-peer execution is out of scope for target architecture.
+
+Callback constraints:
+
+- Callbacks are synchronous and must remain fast.
+- They must not use `async`/`await`.
+- They must not block indefinitely or perform blocking I/O.
+- They must not hold locks longer than necessary.
+
+**Lock Pattern:**
+1. Lock registry.
+2. Read/clone needed data.
+3. Unlock registry immediately.
+4. Run callback with cloned data.
+
+**For users needing async work:**
+- Spawn a background task/thread and use `std::sync::mpsc::channel` to communicate results.
+- See Phase 4 (async wrapper crate) for ergonomic async support via higher-level libraries.
+
+---
+
+## 8. Success Criteria
+
+The package is considered successful for this phase when:
+
+1. Product clarity
+   - Requirements and docs position netmodes-rs as a reusable package, not a learning exercise.
+
+2. Three-layer architecture enforcement
+   - Clear separation exists between platform core, handler layer, and user API layer.
+
+3. Poller foundation
+   - Unified polling API is available with epoll implementation complete and wired.
+   - kqueue and WSAPoll adapters are defined with equivalent behavior contracts.
+
+4. Lifecycle hooks
+   - on_connect, on_message, on_disconnect are available and documented.
+
+5. Session management
+  - Session registry is available for user-defined session structs.
+  - Session create/read/update/remove flows are documented and tested.
+
+6. Custom protocol support
+   - At least one built-in codec exists and user-defined codec integration is possible.
+
+7. UDP support
+  - UDP server and client handler APIs are available and documented.
+
+8. Package quality
+   - Unit and integration tests cover lifecycle transitions, callback execution, and protocol encode/decode.
+   - Documentation includes migration and usage guidance for consumers.
+  - Unit tests cover session registry behavior for user-defined sessions.
+
+---
+
+## 9. L4 Transport Differences (TCP vs UDP)
+
+### 9.1 TCP
+
+- Connection-oriented; `on_connect` and `on_disconnect` callbacks.
+- Session registry supported and recommended for stateful L7 protocols.
+- Ordered, reliable, stream-based delivery.
+- Client registry maintains active TCP connection state.
+
+### 9.2 UDP
+
+- Datagram-oriented; `on_datagram` callback (no `on_connect`/`on_disconnect` by default).
+- Session registry is **configurable:** users can enable it for custom session tracking if their L7 protocol requires it.
+- Unordered, unreliable delivery; L7 protocols add reliability/ordering if needed (e.g., QUIC, CoAP).
+- Each datagram is processed independently unless L7 protocol implements session semantics.
+
+---
+
+## 10. Open Questions
+
+- Default framing format for the built-in codec.
+- Backpressure and partial-write policy in poll-driven mode.
+- Canonical mapping strategy between client identity and session identity.
+
+---
+
+## 11. Evolution Path & Async Support
+
+### 11.1 Phase 1: Core L4 Server (This Package)
+
+- Sockets, epoll/Windows event loop, reactor.
+- Client registry + session store.
+- Callback-based lifecycle hooks (sync).
+- TCP and UDP support.
+
+### 11.2 Phase 2: L7 Protocol Plugins
+
+- Trait-based codec system for L7 protocols.
+- Example L7 protocols: minimal HTTP, pub/sub, custom protocols.
+
+### 11.3 Phase 3: Documentation & Examples
+
+- Comprehensive examples for TCP echo, callbacks, codec integration.
+- Session registry examples with user-defined session types.
+
+### 11.4 Phase 4: Async Wrapper (Separate Crates, Optional)
+
+**Important:** Async support is **not part of this package.** Instead, separate wrapper crates provide ergonomic async/await APIs:
+
+- **`netmodes-tokio`** (or similar): Wraps `netmodes-rs` for Tokio runtime users.
+  - Provides `async fn accept()`, `recv()`, `send()`.
+  - Spawns reactor in background thread, bridges callbacks to async tasks via channels.
+
+- **`netmodes-async-std`** (or similar): Wraps `netmodes-rs` for async-std users.
+  - Same pattern: async wrapper over sync reactor.
+
+**Design Principle:**
+- This package remains 100% sync, event-driven, no embedded runtime.
+- Users choose their async runtime (Tokio, async-std, or none) via wrapper crates.
+- Async is a consumer concern, not a core concern.
+
+---
+
+## 12. Revision History
+
+- v3.0 - L4/L7 event-driven framework reposition.
+  - Repositioned project as lightweight L4 foundation with pluggable L7 protocols.
+  - Clarified sync-first design: no async in core, optional async via wrapper crates.
+  - Demoted pub-sub from framework feature to reference L7 protocol example.
+  - Made UDP session support configurable (protocol-dependent).
+  - Clarified callback model: synchronous, reactor-thread execution.
+  - Separated client registry (framework-owned) from session store (user-owned).
+  - Defined L4 transport differences (TCP vs. UDP).
+  - Moved async to Phase 4 as separate optional wrapper crates (netmodes-tokio, netmodes-async-std).
+
+- v2.0 - Package-focused rewrite.
+  - Repositioned project as reusable package for external users.
+  - Introduced explicit three-layer architecture requirements.
+  - Promoted UDP support to required package scope.
+  - Promoted pub-sub protocol support to required package scope.
+  - Added poller and epoll/kqueue/WSAPoll requirement track.
+  - Added lifecycle hooks requirements (on_connect/on_disconnect/on_message).
+  - Added session management requirements and session registry contract.
+  - Added custom protocol/codec support requirements.
+
+- v1.0 - Initial learning-focused requirements.
+
+- v3.1 - Core/L7 boundary and callback model alignment.
+  - Defined pub-sub as an L7 package/plugin, not a core L4 requirement.
+  - Standardized hooks to use `(client, context)` with context-level registry access.
+  - Defined poller-driven callback execution and removal of framework-managed thread-per-peer execution in target architecture.
+  - Removed legacy gap-analysis section and older gap references.

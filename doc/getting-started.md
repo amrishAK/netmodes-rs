@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Run the server in terminal 1:
 
 ```bash
-cargo run --bin server
+cargo run -p server-module
 ```
 
 ## 3. Connect and send from a client
@@ -112,7 +112,7 @@ If you are running from this repository:
 1. Start sample server binary:
 
 ```bash
-cargo run --bin server
+cargo run -p server-module
 ```
 
 2. In another terminal, run all tests:

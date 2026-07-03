@@ -3,9 +3,8 @@ name = "thugal-net"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "server"
-path = "src/server_module/main.rs"
+[workspace]
+members = ["example/server_module"]
 
 [dependencies]
 libc = "0.2.186"

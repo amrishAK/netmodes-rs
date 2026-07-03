@@ -96,7 +96,7 @@ Target expansion from requirements:
 - `src/tcp_socket_handler/server`: server lifecycle and session runtime.
 - `src/tcp_socket_handler/client`: connected/disconnected client APIs.
 - `src/tcp_socket_handler/errors.rs`: TCP-specific error model.
-- `src/server_module/main.rs`: repository example server binary.
+- `example/server_module/src/main.rs`: repository example server binary.
 - `integration_tests`: integration test crate for end-to-end behavior.
 
 ## Runtime Flows

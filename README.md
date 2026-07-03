@@ -42,8 +42,10 @@ Use the shortest end-to-end path in [doc/getting-started.md](doc/getting-started
 If you are working inside this repository, you can run the sample server binary:
 
 ```bash
-cargo run --bin server
+cargo run -p server-module
 ```
+
+The sample server package is isolated under `example/server_module` with its own `Cargo.toml`.
 
 ## Documentation
 

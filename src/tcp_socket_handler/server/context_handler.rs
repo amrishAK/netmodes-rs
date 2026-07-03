@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 use crate::core::models::domain::tcp::{ContextHandler, TcpContext, TcpPeerConnection};
+use crate::core::registry::register_error::RegistryError;
 
 use crate::tcp_socket_handler::errors::TcpHandlerError;
 
@@ -20,11 +21,11 @@ impl ContextHandler {
     }
 
     pub(crate) fn remove_client(&self, client_id: Uuid) -> Result<(), TcpHandlerError> {
-        self.0
-            .registry
-            .remove_item(&client_id)
-            .map_err(|e| TcpHandlerError::ClientNotFound(format!("Failed to remove client with ID {}: {}", client_id, e)))?;
-        Ok(())
+        match self.0.registry.remove_item(&client_id) {
+            Ok(()) => Ok(()),
+            Err(RegistryError::KeyNotFound(_)) => Err(TcpHandlerError::ClientNotFound(format!("Client with ID {} not found", client_id))),
+            Err(_) => Err(TcpHandlerError::ContextLockError),
+        }
     }
 
     pub fn send_message_to_client(&self, client_id: Uuid, message: &[u8]) -> Result<(), TcpHandlerError> {
@@ -113,6 +114,17 @@ mod tests {
             Ok(_) => panic!("missing client id should fail"),
             Err(err) => err,
         };
+
+        assert!(matches!(err, TcpHandlerError::ClientNotFound(_)));
+    }
+
+    #[test]
+    fn remove_client_missing_id_returns_client_not_found() {
+        let handler = make_handler();
+
+        let err = handler
+            .remove_client(Uuid::new_v4())
+            .expect_err("removing unknown id should fail");
 
         assert!(matches!(err, TcpHandlerError::ClientNotFound(_)));
     }

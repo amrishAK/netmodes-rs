@@ -22,6 +22,15 @@ impl<State> TcpServerHandler<State> {
     }
 }
 
+impl Drop for TcpServer{
+    fn drop(&mut self) {
+        // Close the server socket when the TcpServer instance is dropped
+        if let Err(e) = close_socket(self.fd) {
+            eprintln!("Failed to close server socket: {:?}", e);
+        }
+    }
+}
+
 
 impl TcpServer {
     /// Create a new TCP server instance with the provided settings.
@@ -99,7 +108,15 @@ impl TcpServerHandler<Listening> {
     /// Accept clients in a loop and invoke the handler on a dedicated thread.
     pub fn run(&self, message_handler: OnMessageHandler) -> Result<(), TcpHandlerError> {
         loop {
-            let client_fd = accept_connection(self.server.fd)?; // blocking
+            
+            let client_fd = match accept_connection(self.server.fd) {
+                Ok(fd) => fd,
+                Err(err) => {
+                    eprintln!("Failed to accept client connection: {:?}", err);
+                    std::thread::sleep(std::time::Duration::from_millis(50)); // Sleep briefly before retrying
+                    continue; // Continue accepting new clients even if one fails
+                }
+            };
             
             let client = TcpPeerConnection {
                 id: Uuid::new_v4(),

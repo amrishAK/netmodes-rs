@@ -21,9 +21,8 @@ impl TcpClientSession {
     ///
     /// This method will fail if the lock is poisoned or if the socket write fails.
     pub fn reply(&self,  data: &[u8]) -> Result<(), TcpHandlerError> {
-        let client = self.0.read().map_err(|_| TcpHandlerError::ClientLockError)?;
+        let client = self.0.write().map_err(|_| TcpHandlerError::ClientLockError)?;
         client.write(data)?;
-        println!("Echoed back: {}", String::from_utf8_lossy(data));
         Ok(())
     }
 }
